@@ -75,6 +75,10 @@ class PullRequest(Base):
         back_populates="pull_request",
         foreign_keys="PRStackMembership.pull_request_id",
     )
+    assignee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("team_members.id", ondelete="SET NULL"), nullable=True
+    )
+    assignee: Mapped["TeamMember | None"] = relationship(foreign_keys=[assignee_id])
     user_progress: Mapped[list["UserProgress"]] = relationship(
         back_populates="pull_request", cascade="all, delete-orphan"
     )

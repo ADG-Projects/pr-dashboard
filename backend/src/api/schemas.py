@@ -80,6 +80,8 @@ class PRSummary(BaseModel):
     ci_status: str = "unknown"  # computed: success, failure, pending, unknown
     review_state: str = "none"  # computed: approved, changes_requested, reviewed, none
     stack_id: int | None = None
+    assignee_id: int | None = None
+    assignee_name: str | None = None
     dashboard_reviewed: bool = False
     dashboard_approved: bool = False
     rebased_since_approval: bool = False
@@ -164,6 +166,10 @@ class QualitySnapshotOut(BaseModel):
 
 
 # ── Tracking ─────────────────────────────────────────────────
+
+class AssigneeUpdate(BaseModel):
+    assignee_id: int | None = None
+
 
 class TrackingUpdate(BaseModel):
     reviewed: bool | None = None

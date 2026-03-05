@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useState, useMemo } from 'react';
-import { api, type RepoSummary, type AvailableRepo } from '../api/client';
+import { api, type RepoSummary } from '../api/client';
 import styles from './OrgOverview.module.css';
 
 function healthColor(repo: RepoSummary): string {

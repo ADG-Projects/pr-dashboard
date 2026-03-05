@@ -50,6 +50,8 @@ export interface PRSummary {
   ci_status: string;
   review_state: string;
   stack_id: number | null;
+  assignee_id: number | null;
+  assignee_name: string | null;
   dashboard_reviewed: boolean;
   dashboard_approved: boolean;
   rebased_since_approval: boolean;
@@ -157,6 +159,17 @@ export const api = {
   listTeam: () => request<TeamMember[]>('/api/team'),
   addTeamMember: (data: { display_name: string; github_login?: string; email?: string }) =>
     request<TeamMember>('/api/team', { method: 'POST', body: JSON.stringify(data) }),
+  updateTeamMember: (id: number, data: { display_name?: string; github_login?: string; is_active?: boolean }) =>
+    request<TeamMember>(`/api/team/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteTeamMember: (id: number) =>
+    request<void>(`/api/team/${id}`, { method: 'DELETE' }),
+
+  // Assignee
+  assignPr: (repoId: number, number: number, assigneeId: number | null) =>
+    request<PRSummary>(`/api/repos/${repoId}/pulls/${number}/assignee`, {
+      method: 'PATCH',
+      body: JSON.stringify({ assignee_id: assigneeId }),
+    }),
 
   // Progress
   getProgress: (prId: number) =>

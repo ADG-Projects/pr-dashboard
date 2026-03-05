@@ -34,7 +34,35 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
   const trackingMutation = useMutation({
     mutationFn: (data: { reviewed?: boolean; approved?: boolean }) =>
       api.updateTracking(repoId, prSummary!.number, data),
-    onSuccess: () => {
+    onMutate: async (data) => {
+      await qc.cancelQueries({ queryKey: ['pr-detail', repoId, prSummary?.number] });
+      await qc.cancelQueries({ queryKey: ['pulls', repoId] });
+
+      const prevDetail = qc.getQueryData<PRDetail>(['pr-detail', repoId, prSummary?.number]);
+      const prevPulls = qc.getQueryData(['pulls', repoId]);
+
+      if (prevDetail) {
+        qc.setQueryData<PRDetail>(['pr-detail', repoId, prSummary?.number], {
+          ...prevDetail,
+          ...(data.reviewed !== undefined && { dashboard_reviewed: data.reviewed }),
+          ...(data.approved !== undefined && {
+            dashboard_approved: data.approved,
+            rebased_since_approval: false,
+          }),
+        });
+      }
+
+      return { prevDetail, prevPulls };
+    },
+    onError: (_err, _data, context) => {
+      if (context?.prevDetail) {
+        qc.setQueryData(['pr-detail', repoId, prSummary?.number], context.prevDetail);
+      }
+      if (context?.prevPulls) {
+        qc.setQueryData(['pulls', repoId], context.prevPulls);
+      }
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['pulls', repoId] });
       qc.invalidateQueries({ queryKey: ['pr-detail', repoId, prSummary?.number] });
       qc.invalidateQueries({ queryKey: ['stacks', repoId] });

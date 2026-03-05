@@ -19,22 +19,25 @@
   margin-bottom: 1rem;
 }
 
-.breadcrumb {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-.breadcrumbSep {
-  margin: 0 0.4rem;
-  color: var(--text-dim);
-  font-size: 0.8rem;
+.repoNav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.title {
+.repoSelect {
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   color: var(--accent-gold);
-  font-size: 1.1rem;
-  font-weight: 700;
-  margin-top: 0.2rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.3rem 0.6rem;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
 }
+.repoSelect:focus { border-color: var(--accent-blue); }
 
 .syncBtn {
   padding: 0.4rem 1rem;

@@ -68,10 +68,19 @@ export function RepoView() {
     <div className={styles.container}>
       <div className={styles.content}>
         <div className={styles.titleRow}>
-          <div>
-            <Link to="/" className={styles.breadcrumb}>Repos</Link>
-            <span className={styles.breadcrumbSep}>/</span>
-            <h1 className={styles.title}>{owner}/{name}</h1>
+          <div className={styles.repoNav}>
+            <select
+              value={`${owner}/${name}`}
+              onChange={(e) => {
+                const [o, n] = e.target.value.split('/');
+                navigate(`/repos/${o}/${n}`);
+              }}
+              className={styles.repoSelect}
+            >
+              {(repos || []).map((r: RepoSummary) => (
+                <option key={r.id} value={r.full_name}>{r.full_name}</option>
+              ))}
+            </select>
           </div>
           <Tooltip text="Fetch latest data from GitHub (auto-syncs every 3 min)" position="bottom">
             <button

@@ -43,14 +43,6 @@ class RepoCreate(BaseModel):
     space_id: int | None = None
 
 
-class AvailableRepo(BaseModel):
-    name: str
-    full_name: str
-    description: str | None = None
-    private: bool = False
-    pushed_at: str | None = None
-
-
 class RepoSummary(BaseModel):
     id: int
     owner: str

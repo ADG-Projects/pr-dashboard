@@ -15,6 +15,7 @@ interface Props {
   prs: PRSummary[];
   stacks: Stack[];
   highlightStackId: number | null;
+  dimAssigneeId: number | null;
   selectedPrId: number | null;
   onSelectPr: (id: number | null) => void;
 }
@@ -38,7 +39,7 @@ interface Arrow {
   dimmed: boolean;
 }
 
-export function DependencyGraph({ prs, stacks, highlightStackId, selectedPrId, onSelectPr }: Props) {
+export function DependencyGraph({ prs, stacks, highlightStackId, dimAssigneeId, selectedPrId, onSelectPr }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -208,8 +209,11 @@ export function DependencyGraph({ prs, stacks, highlightStackId, selectedPrId, o
     };
   }, [prs, highlightedPrIds, maxCols]);
 
-  const isDimmed = useCallback((prId: number) =>
-    highlightedPrIds != null && !highlightedPrIds.has(prId), [highlightedPrIds]);
+  const isDimmed = useCallback((pr: PRSummary) => {
+    if (highlightedPrIds != null && !highlightedPrIds.has(pr.id)) return true;
+    if (dimAssigneeId != null && pr.assignee_id !== dimAssigneeId) return true;
+    return false;
+  }, [highlightedPrIds, dimAssigneeId]);
 
   function trackingBorderClass(pr: PRSummary): string {
     if (pr.dashboard_approved && !pr.rebased_since_approval) return styles.borderApproved;
@@ -245,6 +249,11 @@ export function DependencyGraph({ prs, stacks, highlightStackId, selectedPrId, o
               )}
             </span>
           )}
+          {pr.assignee_name && (
+            <span className={styles.assigneeBadge} title={pr.assignee_name}>
+              {pr.assignee_name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
+            </span>
+          )}
           <span className={styles.cardDiff}>
             <span className={styles.add}>+{pr.additions}</span>
             <span className={styles.del}>-{pr.deletions}</span>
@@ -276,7 +285,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, selectedPrId, o
 
           {layout.map((pos) => {
             const isSelected = selectedPrId === pos.pr.id;
-            const dimmed = isDimmed(pos.pr.id);
+            const dimmed = isDimmed(pos.pr);
             return (
               <div
                 key={pos.pr.id}
@@ -297,7 +306,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, selectedPrId, o
           <div className={styles.standaloneGrid}>
             {standalones.map((pr) => {
               const isSelected = selectedPrId === pr.id;
-              const dimmed = isDimmed(pr.id);
+              const dimmed = isDimmed(pr);
               return (
                 <div
                   key={pr.id}

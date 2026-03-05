@@ -16,6 +16,7 @@ interface Props {
   stacks: Stack[];
   highlightStackId: number | null;
   dimAssigneeId: number | null;
+  dimAuthor: string | null;
   selectedPrId: number | null;
   onSelectPr: (id: number | null) => void;
 }
@@ -39,7 +40,7 @@ interface Arrow {
   dimmed: boolean;
 }
 
-export function DependencyGraph({ prs, stacks, highlightStackId, dimAssigneeId, selectedPrId, onSelectPr }: Props) {
+export function DependencyGraph({ prs, stacks, highlightStackId, dimAssigneeId, dimAuthor, selectedPrId, onSelectPr }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -212,8 +213,9 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimAssigneeId, 
   const isDimmed = useCallback((pr: PRSummary) => {
     if (highlightedPrIds != null && !highlightedPrIds.has(pr.id)) return true;
     if (dimAssigneeId != null && pr.assignee_id !== dimAssigneeId) return true;
+    if (dimAuthor != null && pr.author !== dimAuthor) return true;
     return false;
-  }, [highlightedPrIds, dimAssigneeId]);
+  }, [highlightedPrIds, dimAssigneeId, dimAuthor]);
 
   function reviewBorderClass(pr: PRSummary): string {
     if (pr.review_state === 'approved' && !pr.rebased_since_approval) return styles.borderApproved;

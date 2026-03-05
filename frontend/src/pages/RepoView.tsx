@@ -53,9 +53,8 @@ export function RepoView() {
     },
   });
 
-  // Filter PRs
+  // Filter PRs (CI is a hard filter; author dims cards like the original dashboard)
   let filtered = pulls || [];
-  if (authorFilter) filtered = filtered.filter((p: PRSummary) => p.author === authorFilter);
   if (ciFilter) filtered = filtered.filter((p: PRSummary) => p.ci_status === ciFilter);
 
   // Unique authors for filter dropdown
@@ -124,6 +123,7 @@ export function RepoView() {
             stacks={stacks || []}
             highlightStackId={stackFilter}
             dimAssigneeId={assigneeFilter}
+            dimAuthor={authorFilter || null}
             selectedPrId={selectedPrId}
             onSelectPr={selectPr}
           />

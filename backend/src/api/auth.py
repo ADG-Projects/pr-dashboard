@@ -1,20 +1,26 @@
-"""Authentication routes and middleware (HMAC-signed cookies)."""
+"""Authentication routes and middleware (HMAC-signed cookies + GitHub OAuth)."""
 
 import hashlib
 import hmac
 import time
 
+import httpx
 from fastapi import APIRouter, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from loguru import logger
+from sqlalchemy import select
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from src.api.schemas import AuthStatus, LoginRequest
 from src.config.settings import settings
+from src.db.engine import async_session_factory
+from src.models.tables import User
+from src.services.crypto import encrypt_token
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # Paths that don't require authentication
-PUBLIC_PATHS = {"/api/auth/login", "/api/auth/me", "/api/health"}
+PUBLIC_PATHS = {"/api/auth/login", "/api/auth/me", "/api/auth/github/callback", "/api/health"}
 PUBLIC_PREFIXES = ("/api/events",)
 
 
@@ -33,11 +39,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+# ── Password gate (unchanged) ──────────────────────────────
+
 COOKIE_NAME = "dashboard_session"
+GITHUB_COOKIE = "github_user"
 
 
 def _sign(payload: str) -> str:
-    sig = hmac.new(settings.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    sig = hmac.new(
+        settings.secret_key.encode(), payload.encode(), hashlib.sha256
+    ).hexdigest()
     return f"{payload}.{sig}"
 
 
@@ -45,7 +56,9 @@ def _verify(token: str) -> str | None:
     if "." not in token:
         return None
     payload, sig = token.rsplit(".", 1)
-    expected = hmac.new(settings.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    expected = hmac.new(
+        settings.secret_key.encode(), payload.encode(), hashlib.sha256
+    ).hexdigest()
     if not hmac.compare_digest(sig, expected):
         return None
     return payload
@@ -66,6 +79,23 @@ def is_authenticated(request: Request) -> bool:
     except ValueError:
         return False
     return time.time() < expires
+
+
+def get_github_user_id(request: Request) -> int | None:
+    """Extract GitHub user ID from the identity cookie."""
+    token = request.cookies.get(GITHUB_COOKIE)
+    if not token:
+        return None
+    payload = _verify(token)
+    if payload is None:
+        return None
+    try:
+        user_id_str, expires_str = payload.split(":", 1)
+        if time.time() >= int(expires_str):
+            return None
+        return int(user_id_str)
+    except (ValueError, IndexError):
+        return None
 
 
 @router.post("/login")
@@ -96,9 +126,22 @@ async def login(body: LoginRequest, response: Response) -> AuthStatus:
 @router.get("/me")
 async def auth_status(request: Request) -> AuthStatus:
     """Check current auth status."""
+    user_info = None
+    user_id = get_github_user_id(request)
+    if user_id:
+        async with async_session_factory() as session:
+            user = await session.get(User, user_id)
+            if user:
+                user_info = {
+                    "id": user.id,
+                    "login": user.login,
+                    "name": user.name,
+                    "avatar_url": user.avatar_url,
+                }
     return AuthStatus(
         authenticated=is_authenticated(request),
         auth_enabled=bool(settings.dashboard_password),
+        user=user_info,
     )
 
 
@@ -106,4 +149,148 @@ async def auth_status(request: Request) -> AuthStatus:
 async def logout(response: Response) -> AuthStatus:
     """Clear session cookie."""
     response.delete_cookie(COOKIE_NAME, path="/")
-    return AuthStatus(authenticated=False, auth_enabled=bool(settings.dashboard_password))
+    response.delete_cookie(GITHUB_COOKIE, path="/")
+    return AuthStatus(
+        authenticated=False, auth_enabled=bool(settings.dashboard_password)
+    )
+
+
+# ── GitHub OAuth ────────────────────────────────────────────
+
+GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
+GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
+GITHUB_USER_URL = "https://api.github.com/user"
+
+
+@router.get("/github")
+async def github_oauth_start(request: Request) -> RedirectResponse:
+    """Redirect to GitHub OAuth authorization page."""
+    if not settings.github_oauth_client_id:
+        return JSONResponse(  # type: ignore[return-value]
+            status_code=400,
+            content={"detail": "GitHub OAuth not configured"},
+        )
+    params = {
+        "client_id": settings.github_oauth_client_id,
+        "scope": "repo read:org",
+        "state": _sign("oauth"),
+    }
+    url = f"{GITHUB_AUTHORIZE_URL}?{'&'.join(f'{k}={v}' for k, v in params.items())}"
+    return RedirectResponse(url=url)
+
+
+@router.get("/github/callback")
+async def github_oauth_callback(
+    code: str, state: str, request: Request
+) -> RedirectResponse:
+    """Exchange OAuth code for token, upsert user, set identity cookie."""
+    # Verify state
+    if _verify(state) != "oauth":
+        return RedirectResponse(url="/?error=invalid_state")
+
+    # Exchange code for access token
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            GITHUB_TOKEN_URL,
+            json={
+                "client_id": settings.github_oauth_client_id,
+                "client_secret": settings.github_oauth_client_secret,
+                "code": code,
+            },
+            headers={"Accept": "application/json"},
+        )
+        if resp.status_code != 200:
+            logger.error(f"GitHub OAuth token exchange failed: {resp.text}")
+            return RedirectResponse(url="/?error=token_exchange_failed")
+
+        token_data = resp.json()
+        access_token = token_data.get("access_token")
+        if not access_token:
+            logger.error(f"No access_token in response: {token_data}")
+            return RedirectResponse(url="/?error=no_token")
+
+        # Fetch user info
+        user_resp = await client.get(
+            GITHUB_USER_URL,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/vnd.github+json",
+            },
+        )
+        if user_resp.status_code != 200:
+            logger.error(f"GitHub user fetch failed: {user_resp.text}")
+            return RedirectResponse(url="/?error=user_fetch_failed")
+
+        gh_user = user_resp.json()
+
+    # Upsert user in DB
+    from datetime import UTC, datetime
+
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(User).where(User.github_id == gh_user["id"])
+        )
+        user = result.scalar_one_or_none()
+
+        if user is None:
+            user = User(
+                github_id=gh_user["id"],
+                login=gh_user["login"],
+                name=gh_user.get("name"),
+                avatar_url=gh_user.get("avatar_url"),
+                encrypted_token=encrypt_token(access_token),
+                last_login_at=datetime.now(UTC),
+            )
+            session.add(user)
+        else:
+            user.login = gh_user["login"]
+            user.name = gh_user.get("name")
+            user.avatar_url = gh_user.get("avatar_url")
+            user.encrypted_token = encrypt_token(access_token)
+            user.last_login_at = datetime.now(UTC)
+
+        await session.commit()
+        await session.refresh(user)
+        user_id = user.id
+
+    # Set identity cookie
+    expires = int(time.time()) + settings.session_max_age_seconds
+    cookie_payload = f"{user_id}:{expires}"
+    token = _sign(cookie_payload)
+
+    response = RedirectResponse(url="/")
+    response.set_cookie(
+        GITHUB_COOKIE,
+        token,
+        max_age=settings.session_max_age_seconds,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@router.get("/user")
+async def get_current_user(request: Request):
+    """Return current GitHub user info or null if not connected."""
+    user_id = get_github_user_id(request)
+    if not user_id:
+        return None
+    async with async_session_factory() as session:
+        user = await session.get(User, user_id)
+        if not user:
+            return None
+        return {
+            "id": user.id,
+            "login": user.login,
+            "name": user.name,
+            "avatar_url": user.avatar_url,
+        }
+
+
+@router.post("/github/disconnect")
+async def github_disconnect(response: Response):
+    """Clear GitHub identity cookie."""
+    response.delete_cookie(GITHUB_COOKIE, path="/")
+    return {"status": "disconnected"}

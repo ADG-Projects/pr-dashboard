@@ -187,3 +187,4 @@ class LoginRequest(BaseModel):
 class AuthStatus(BaseModel):
     authenticated: bool
     auth_enabled: bool
+    user: dict | None = None

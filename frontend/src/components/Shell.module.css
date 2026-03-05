@@ -112,7 +112,7 @@
   position: absolute;
   top: calc(100% + 0.35rem);
   right: 0;
-  min-width: 180px;
+  min-width: 220px;
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
@@ -125,11 +125,63 @@
   padding: 0.6rem 0.75rem;
   font-size: 0.8rem;
   color: var(--text-muted);
-  border-bottom: 1px solid var(--border-default);
+}
+
+.userMenuSection {
+  padding: 0.25rem 0;
+}
+
+.userMenuSectionLabel {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.userMenuAccount {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+}
+
+.userMenuAccountAvatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+}
+
+.userMenuAccountLogin {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userMenuAccountGhe {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.userMenuDivider {
+  height: 1px;
+  background: var(--border-default);
+  margin: 0.25rem 0;
 }
 
 .userMenuItem {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   width: 100%;
   padding: 0.5rem 0.75rem;
   font-size: 0.8rem;
@@ -143,6 +195,13 @@
 }
 .userMenuItem:hover {
   background: var(--bg-elevated);
+}
+
+.userMenuItemDanger {
+  color: #e5534b;
+}
+.userMenuItemDanger:hover {
+  background: rgba(229, 83, 75, 0.1);
 }
 
 .githubBtn {

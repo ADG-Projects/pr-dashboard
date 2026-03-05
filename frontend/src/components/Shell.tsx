@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useSSE } from '../api/useSSE';
 import { useCurrentUser } from '../App';
 import { api } from '../api/client';
@@ -45,9 +46,21 @@ export function Shell() {
     window.location.href = `${BASE}/api/auth/github`;
   }
 
-  async function handleDisconnect() {
+  const { data: accounts } = useQuery({
+    queryKey: ['accounts'],
+    queryFn: api.listAccounts,
+    enabled: !!user && showUserMenu,
+  });
+
+  async function handleSignOut() {
     await api.disconnectGitHub();
     setUser(null);
+    setShowUserMenu(false);
+  }
+
+  function handleLinkOAuth() {
+    setShowUserMenu(false);
+    window.location.href = `${BASE}/api/auth/github?link=true`;
   }
 
   return (
@@ -81,11 +94,46 @@ export function Shell() {
                   <div className={styles.userMenuInfo}>
                     Signed in as <strong>{user.login}</strong>
                   </div>
+
+                  {accounts && accounts.length > 0 && (
+                    <div className={styles.userMenuSection}>
+                      <div className={styles.userMenuSectionLabel}>Linked accounts</div>
+                      {accounts.map((acct) => (
+                        <div key={acct.id} className={styles.userMenuAccount}>
+                          {acct.avatar_url && (
+                            <img src={acct.avatar_url} alt="" className={styles.userMenuAccountAvatar} />
+                          )}
+                          <span className={styles.userMenuAccountLogin}>{acct.login}</span>
+                          {acct.base_url !== 'https://api.github.com' && (
+                            <span className={styles.userMenuAccountGhe}>GHE</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className={styles.userMenuDivider} />
+
+                  {oauthConfigured && (
+                    <button className={styles.userMenuItem} onClick={handleLinkOAuth}>
+                      <GitHubIcon size={14} />
+                      Link another account
+                    </button>
+                  )}
                   <button
                     className={styles.userMenuItem}
-                    onClick={() => { setShowUserMenu(false); handleDisconnect(); }}
+                    onClick={() => { setShowUserMenu(false); setShowSpaces(true); }}
                   >
-                    Disconnect GitHub
+                    Manage accounts & spaces
+                  </button>
+
+                  <div className={styles.userMenuDivider} />
+
+                  <button
+                    className={`${styles.userMenuItem} ${styles.userMenuItemDanger}`}
+                    onClick={handleSignOut}
+                  >
+                    Sign out
                   </button>
                 </div>
               )}

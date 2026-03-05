@@ -6,11 +6,29 @@ import time
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.api.schemas import AuthStatus, LoginRequest
 from src.config.settings import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# Paths that don't require authentication
+PUBLIC_PATHS = {"/api/auth/login", "/api/auth/me", "/api/health"}
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """Block unauthenticated requests to /api/* routes (except public paths)."""
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if (
+            path.startswith("/api/")
+            and path not in PUBLIC_PATHS
+            and not is_authenticated(request)
+        ):
+            return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+        return await call_next(request)
 
 COOKIE_NAME = "dashboard_session"
 

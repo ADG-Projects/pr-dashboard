@@ -80,9 +80,14 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 # Serve built frontend in production — MUST be last (catch-all mount)
-STATIC_DIR = Path(__file__).parent.parent.parent / "frontend" / "dist"
-if STATIC_DIR.exists():
-    app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="frontend")
+# Check both local dev layout and Docker layout
+for _candidate in [
+    Path(__file__).parent.parent.parent / "frontend" / "dist",  # local dev
+    Path(__file__).parent.parent / "frontend" / "dist",  # Docker (/app/frontend/dist)
+]:
+    if _candidate.exists():
+        app.mount("/", StaticFiles(directory=str(_candidate), html=True), name="frontend")
+        break
 
 
 if __name__ == "__main__":

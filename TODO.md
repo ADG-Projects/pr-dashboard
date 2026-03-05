@@ -1,6 +1,7 @@
 # PR Dashboard — TODO
 
 ## Completed
+- [x] User management & PR assignment: team management modal, per-PR assignee dropdown, assignee filter that dims non-matching cards, team progress checkboxes in detail panel (2026-03-05)
 - [x] Sticky review/approval tracking with rebase detection: per-PR R/A toggles that persist across rebases, with visual warning when HEAD changes after approval (2026-03-05)
 - [x] Org repo browser: browse and track repos from configured GitHub org instead of manual input (2026-03-05)
 - [x] Backend foundation: FastAPI + SQLAlchemy async + all DB models (2026-03-04)
@@ -21,10 +22,8 @@
 
 ## In Progress
 - [ ] Error trend chart (stacked bar) for stack view
-- [ ] Per-member review checkboxes + assignee tracking in stack view
 
 ## Planned
-- [ ] Team management UI page
 - [ ] Login page UI (currently only API)
 - [ ] SSE client-side integration (EventSource in react-query)
 - [ ] Quality snapshots collection during sync (parse CI output)

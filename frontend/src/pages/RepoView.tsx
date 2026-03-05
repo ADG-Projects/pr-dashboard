@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { useState } from 'react';
-import { api, type PRSummary, type RepoSummary } from '../api/client';
+import { api, type PRSummary, type RepoSummary, type TeamMember } from '../api/client';
 import { DependencyGraph } from '../components/DependencyGraph';
 import { PRDetailPanel } from '../components/PRDetailPanel';
 import { useStore } from '../store/useStore';
@@ -17,6 +17,7 @@ export function RepoView() {
   const [authorFilter, setAuthorFilter] = useState('');
   const [ciFilter, setCiFilter] = useState('');
   const [stackFilter, setStackFilter] = useState<number | null>(null);
+  const [assigneeFilter, setAssigneeFilter] = useState<number | null>(null);
 
   // Get repo ID from the repos list
   const { data: repos } = useQuery({
@@ -37,6 +38,12 @@ export function RepoView() {
     queryFn: () => api.listStacks(repo!.id),
     enabled: !!repo,
   });
+
+  const { data: team } = useQuery({
+    queryKey: ['team'],
+    queryFn: api.listTeam,
+  });
+  const activeTeam = team?.filter((m: TeamMember) => m.is_active) || [];
 
   const syncMutation = useMutation({
     mutationFn: () => api.syncRepo(repo!.id),
@@ -97,6 +104,16 @@ export function RepoView() {
               </option>
             ))}
           </select>
+          <select
+            value={assigneeFilter ?? ''}
+            onChange={(e) => setAssigneeFilter(e.target.value ? Number(e.target.value) : null)}
+            className={styles.select}
+          >
+            <option value="">All assignees</option>
+            {activeTeam.map((m: TeamMember) => (
+              <option key={m.id} value={m.id}>{m.display_name}</option>
+            ))}
+          </select>
         </div>
 
         {isLoading ? (
@@ -106,6 +123,7 @@ export function RepoView() {
             prs={filtered}
             stacks={stacks || []}
             highlightStackId={stackFilter}
+            dimAssigneeId={assigneeFilter}
             selectedPrId={selectedPrId}
             onSelectPr={selectPr}
           />

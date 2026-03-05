@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useSSE } from '../api/useSSE';
 import { TeamPanel } from './TeamPanel';
+import { Tooltip } from './Tooltip';
 import styles from './Shell.module.css';
 
 export function Shell() {
@@ -17,8 +18,12 @@ export function Shell() {
       <header className={styles.header}>
         <Link to="/" className={styles.logo}>PR Dashboard</Link>
         <nav className={styles.nav}>
-          <Link to="/" className={isHome ? styles.active : ''}>Repos</Link>
-          <button className={styles.teamBtn} onClick={() => setShowTeam(true)}>Team</button>
+          <Tooltip text="View all tracked repositories" position="bottom">
+            <Link to="/" className={isHome ? styles.active : ''}>Repos</Link>
+          </Tooltip>
+          <Tooltip text="Manage team members and assignments" position="bottom">
+            <button className={styles.teamBtn} onClick={() => setShowTeam(true)}>Team</button>
+          </Tooltip>
         </nav>
       </header>
       <main className={styles.main}>

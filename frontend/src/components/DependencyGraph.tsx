@@ -9,6 +9,7 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import type { PRSummary, Stack } from '../api/client';
 import { StatusDot } from './StatusDot';
+import { Tooltip } from './Tooltip';
 import styles from './DependencyGraph.module.css';
 
 interface Props {
@@ -238,24 +239,34 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimAssigneeId, 
           >
             #{pr.number}
           </a>
-          {pr.draft && <span className={styles.draftBadge}>Draft</span>}
+          {pr.draft && <Tooltip text="Draft PR — not ready for merge" position="top"><span className={styles.draftBadge}>Draft</span></Tooltip>}
         </div>
         <div className={styles.cardTitle}>{pr.title}</div>
         <div className={styles.cardFooter}>
-          <StatusDot status={pr.ci_status} title={`CI: ${pr.ci_status}`} size={7} />
-          <StatusDot status={pr.review_state} title={`Review: ${pr.review_state}`} size={7} />
+          <Tooltip text={`CI: ${pr.ci_status}`} position="top">
+            <StatusDot status={pr.ci_status} size={7} />
+          </Tooltip>
+          <Tooltip text={`Review: ${pr.review_state}`} position="top">
+            <StatusDot status={pr.review_state} size={7} />
+          </Tooltip>
           {pr.rebased_since_approval && (
-            <span className={styles.badgeWarn} title="Rebased since approval">!</span>
+            <Tooltip text="Rebased since approval — re-review may be needed" position="top">
+              <span className={styles.badgeWarn}>!</span>
+            </Tooltip>
           )}
           {pr.assignee_name && (
-            <span className={styles.assigneeBadge} title={pr.assignee_name}>
-              {pr.assignee_name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
-            </span>
+            <Tooltip text={`Assigned to ${pr.assignee_name}`} position="top">
+              <span className={styles.assigneeBadge}>
+                {pr.assignee_name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
+              </span>
+            </Tooltip>
           )}
-          <span className={styles.cardDiff}>
-            <span className={styles.add}>+{pr.additions}</span>
-            <span className={styles.del}>-{pr.deletions}</span>
-          </span>
+          <Tooltip text={`+${pr.additions} added, -${pr.deletions} removed`} position="top">
+            <span className={styles.cardDiff}>
+              <span className={styles.add}>+{pr.additions}</span>
+              <span className={styles.del}>-{pr.deletions}</span>
+            </span>
+          </Tooltip>
         </div>
       </>
     );
@@ -300,7 +311,9 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimAssigneeId, 
 
       {standalones.length > 0 && (
         <div className={styles.standaloneSection}>
-          <div className={styles.standaloneLabel}>Standalone PRs</div>
+          <Tooltip text="PRs without parent/child dependencies" position="right">
+            <div className={styles.standaloneLabel}>Standalone PRs</div>
+          </Tooltip>
           <div className={styles.standaloneGrid}>
             {standalones.map((pr) => {
               const isSelected = selectedPrId === pr.id;

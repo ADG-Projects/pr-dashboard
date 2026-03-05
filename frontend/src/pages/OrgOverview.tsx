@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useState, useMemo } from 'react';
 import { api, type RepoSummary } from '../api/client';
+import { Tooltip } from '../components/Tooltip';
 import styles from './OrgOverview.module.css';
 
 function timeAgo(dateStr: string | null): string {
@@ -85,10 +86,14 @@ function RepoBrowser({ onClose }: { onClose: () => void }) {
                 <span className={styles.repoRowName}>
                   {repo.name}
                   {repo.private && (
-                    <span className={styles.privateBadge}>private</span>
+                    <Tooltip text="This is a private repository" position="top">
+                      <span className={styles.privateBadge}>private</span>
+                    </Tooltip>
                   )}
                   {repo.pushed_at && (
-                    <span className={styles.pushedAt}>{timeAgo(repo.pushed_at)}</span>
+                    <Tooltip text="Last push to this repository" position="top">
+                      <span className={styles.pushedAt}>{timeAgo(repo.pushed_at)}</span>
+                    </Tooltip>
                   )}
                 </span>
                 {repo.description && (
@@ -143,10 +148,17 @@ export function OrgOverview() {
             className={styles.card}
           >
             <div className={styles.cardHeader}>
-              <span
-                className={styles.healthDot}
-                style={{ background: repo.last_synced_at ? healthColor(repo) : 'var(--text-dim)' }}
-              />
+              <Tooltip text={
+                !repo.last_synced_at ? 'Not yet synced' :
+                repo.failing_ci_count > 0 ? 'Some PRs have failing CI' :
+                repo.stale_pr_count > 0 ? 'Some PRs are stale (no updates in 7 days)' :
+                'All PRs healthy'
+              } position="right">
+                <span
+                  className={styles.healthDot}
+                  style={{ background: repo.last_synced_at ? healthColor(repo) : 'var(--text-dim)' }}
+                />
+              </Tooltip>
               <span className={styles.repoName}>{repo.full_name}</span>
               <button
                 className={styles.untrackBtn}
@@ -163,35 +175,45 @@ export function OrgOverview() {
               </button>
             </div>
             <div className={styles.stats}>
-              <div className={styles.stat}>
-                <span className={styles.statValue}>
-                  {repo.last_synced_at ? repo.open_pr_count : <span className={styles.statPlaceholder} />}
-                </span>
-                <span className={styles.statLabel}>Open PRs</span>
-              </div>
-              <div className={styles.stat}>
-                <span className={styles.statValue} style={{ color: repo.last_synced_at && repo.failing_ci_count > 0 ? 'var(--ci-fail)' : undefined }}>
-                  {repo.last_synced_at ? repo.failing_ci_count : <span className={styles.statPlaceholder} />}
-                </span>
-                <span className={styles.statLabel}>Failing CI</span>
-              </div>
-              <div className={styles.stat}>
-                <span className={styles.statValue}>
-                  {repo.last_synced_at ? repo.stack_count : <span className={styles.statPlaceholder} />}
-                </span>
-                <span className={styles.statLabel}>Stacks</span>
-              </div>
-              <div className={styles.stat}>
-                <span className={styles.statValue} style={{ color: repo.last_synced_at && repo.stale_pr_count > 0 ? 'var(--ci-pending)' : undefined }}>
-                  {repo.last_synced_at ? repo.stale_pr_count : <span className={styles.statPlaceholder} />}
-                </span>
-                <span className={styles.statLabel}>Stale</span>
-              </div>
+              <Tooltip text="Total open pull requests" position="bottom">
+                <div className={styles.stat}>
+                  <span className={styles.statValue}>
+                    {repo.last_synced_at ? repo.open_pr_count : <span className={styles.statPlaceholder} />}
+                  </span>
+                  <span className={styles.statLabel}>Open PRs</span>
+                </div>
+              </Tooltip>
+              <Tooltip text="PRs with at least one failing CI check" position="bottom">
+                <div className={styles.stat}>
+                  <span className={styles.statValue} style={{ color: repo.last_synced_at && repo.failing_ci_count > 0 ? 'var(--ci-fail)' : undefined }}>
+                    {repo.last_synced_at ? repo.failing_ci_count : <span className={styles.statPlaceholder} />}
+                  </span>
+                  <span className={styles.statLabel}>Failing CI</span>
+                </div>
+              </Tooltip>
+              <Tooltip text="Groups of dependent/stacked PRs" position="bottom">
+                <div className={styles.stat}>
+                  <span className={styles.statValue}>
+                    {repo.last_synced_at ? repo.stack_count : <span className={styles.statPlaceholder} />}
+                  </span>
+                  <span className={styles.statLabel}>Stacks</span>
+                </div>
+              </Tooltip>
+              <Tooltip text="PRs with no updates in the last 7 days" position="bottom">
+                <div className={styles.stat}>
+                  <span className={styles.statValue} style={{ color: repo.last_synced_at && repo.stale_pr_count > 0 ? 'var(--ci-pending)' : undefined }}>
+                    {repo.last_synced_at ? repo.stale_pr_count : <span className={styles.statPlaceholder} />}
+                  </span>
+                  <span className={styles.statLabel}>Stale</span>
+                </div>
+              </Tooltip>
             </div>
             {repo.last_synced_at && (
-              <div className={styles.synced}>
-                Synced {new Date(repo.last_synced_at).toLocaleTimeString()}
-              </div>
+              <Tooltip text="Last sync with GitHub API" position="top">
+                <div className={styles.synced}>
+                  Synced {new Date(repo.last_synced_at).toLocaleTimeString()}
+                </div>
+              </Tooltip>
             )}
           </Link>
         ))}

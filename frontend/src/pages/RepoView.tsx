@@ -1,16 +1,18 @@
 /** Level 2 — Repo view showing open PRs as a dependency graph with stack filtering. */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useState } from 'react';
 import { api, type PRSummary, type RepoSummary, type TeamMember } from '../api/client';
 import { DependencyGraph } from '../components/DependencyGraph';
 import { PRDetailPanel } from '../components/PRDetailPanel';
+import { Tooltip } from '../components/Tooltip';
 import { useStore } from '../store/useStore';
 import styles from './RepoView.module.css';
 
 export function RepoView() {
   const { owner, name } = useParams<{ owner: string; name: string }>();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const { selectedPrId, selectPr } = useStore();
 
@@ -71,48 +73,58 @@ export function RepoView() {
             <span className={styles.breadcrumbSep}>/</span>
             <h1 className={styles.title}>{owner}/{name}</h1>
           </div>
-          <button
-            onClick={() => syncMutation.mutate()}
-            disabled={syncMutation.isPending}
-            className={styles.syncBtn}
-          >
-            {syncMutation.isPending ? 'Syncing...' : 'Sync now'}
-          </button>
+          <Tooltip text="Fetch latest data from GitHub (auto-syncs every 3 min)" position="bottom">
+            <button
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
+              className={styles.syncBtn}
+            >
+              {syncMutation.isPending ? 'Syncing...' : 'Sync now'}
+            </button>
+          </Tooltip>
         </div>
 
         <div className={styles.filters}>
-          <select value={authorFilter} onChange={(e) => setAuthorFilter(e.target.value)} className={styles.select}>
-            <option value="">All authors</option>
-            {authors.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
-          <select value={ciFilter} onChange={(e) => setCiFilter(e.target.value)} className={styles.select}>
-            <option value="">All CI</option>
-            <option value="success">Passing</option>
-            <option value="failure">Failing</option>
-            <option value="pending">Pending</option>
-          </select>
-          <select
-            value={stackFilter ?? ''}
-            onChange={(e) => setStackFilter(e.target.value ? Number(e.target.value) : null)}
-            className={styles.select}
-          >
-            <option value="">All PRs</option>
-            {(stacks || []).map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name || `Stack #${s.id}`} ({s.members.length} PRs)
-              </option>
-            ))}
-          </select>
-          <select
-            value={assigneeFilter ?? ''}
-            onChange={(e) => setAssigneeFilter(e.target.value ? Number(e.target.value) : null)}
-            className={styles.select}
-          >
-            <option value="">All assignees</option>
-            {activeTeam.map((m: TeamMember) => (
-              <option key={m.id} value={m.id}>{m.display_name}</option>
-            ))}
-          </select>
+          <Tooltip text="Dims non-matching PR cards" position="bottom">
+            <select value={authorFilter} onChange={(e) => setAuthorFilter(e.target.value)} className={styles.select}>
+              <option value="">All authors</option>
+              {authors.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </Tooltip>
+          <Tooltip text="Hides non-matching PRs" position="bottom">
+            <select value={ciFilter} onChange={(e) => setCiFilter(e.target.value)} className={styles.select}>
+              <option value="">All CI</option>
+              <option value="success">Passing</option>
+              <option value="failure">Failing</option>
+              <option value="pending">Pending</option>
+            </select>
+          </Tooltip>
+          <Tooltip text="Highlight a stack of dependent PRs" position="bottom">
+            <select
+              value={stackFilter ?? ''}
+              onChange={(e) => setStackFilter(e.target.value ? Number(e.target.value) : null)}
+              className={styles.select}
+            >
+              <option value="">All PRs</option>
+              {(stacks || []).map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name || `Stack #${s.id}`} ({s.members.length} PRs)
+                </option>
+              ))}
+            </select>
+          </Tooltip>
+          <Tooltip text="Dims PRs not assigned to this person" position="bottom">
+            <select
+              value={assigneeFilter ?? ''}
+              onChange={(e) => setAssigneeFilter(e.target.value ? Number(e.target.value) : null)}
+              className={styles.select}
+            >
+              <option value="">All assignees</option>
+              {activeTeam.map((m: TeamMember) => (
+                <option key={m.id} value={m.id}>{m.display_name}</option>
+              ))}
+            </select>
+          </Tooltip>
         </div>
 
         {isLoading ? (

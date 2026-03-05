@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type PRDetail } from '../api/client';
 import { StatusDot } from './StatusDot';
+import { Tooltip } from './Tooltip';
 import styles from './PRDetailPanel.module.css';
 
 interface Props {
@@ -65,13 +66,19 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
         {pr ? (
           <>
             <h2 className={styles.title}>
-              <a href={pr.html_url} target="_blank" rel="noopener noreferrer">#{pr.number}</a>
+              <Tooltip text="Open on GitHub" position="bottom">
+                <a href={pr.html_url} target="_blank" rel="noopener noreferrer">#{pr.number}</a>
+              </Tooltip>
               {' '}{pr.title}
             </h2>
             <div className={styles.branch}>
-              <span className={styles.branchName}>{pr.head_ref}</span>
+              <Tooltip text="Feature branch" position="bottom">
+                <span className={styles.branchName}>{pr.head_ref}</span>
+              </Tooltip>
               <span className={styles.arrow}>→</span>
-              <span className={styles.branchName}>{pr.base_ref}</span>
+              <Tooltip text="Target branch" position="bottom">
+                <span className={styles.branchName}>{pr.base_ref}</span>
+              </Tooltip>
             </div>
           </>
         ) : (
@@ -83,7 +90,9 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
         <div className={styles.body}>
           {/* Assignee */}
           <section className={styles.section}>
-            <h3>Assignee</h3>
+            <Tooltip text="Assign a team member to track this PR" position="right">
+              <h3>Assignee</h3>
+            </Tooltip>
             <select
               className={styles.assigneeSelect}
               value={pr.assignee_id ?? ''}
@@ -104,15 +113,23 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
           <section className={styles.section}>
             <h3>Changes</h3>
             <div className={styles.diffStats}>
-              <span className={styles.files}>{pr.changed_files} files</span>
-              <span className={styles.add}>+{pr.additions}</span>
-              <span className={styles.del}>-{pr.deletions}</span>
+              <Tooltip text="Files modified" position="bottom">
+                <span className={styles.files}>{pr.changed_files} files</span>
+              </Tooltip>
+              <Tooltip text="Lines added" position="bottom">
+                <span className={styles.add}>+{pr.additions}</span>
+              </Tooltip>
+              <Tooltip text="Lines removed" position="bottom">
+                <span className={styles.del}>-{pr.deletions}</span>
+              </Tooltip>
             </div>
           </section>
 
           {/* Check Runs */}
           <section className={styles.section}>
-            <h3>CI Checks ({pr.check_runs.length})</h3>
+            <Tooltip text="Status checks required for merge" position="right">
+              <h3>CI Checks ({pr.check_runs.length})</h3>
+            </Tooltip>
             {pr.check_runs.length === 0 ? (
               <div className={styles.empty}>No checks</div>
             ) : (
@@ -136,7 +153,9 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
 
           {/* Reviews */}
           <section className={styles.section}>
-            <h3>Reviews ({pr.reviews.length})</h3>
+            <Tooltip text="GitHub review approvals and feedback" position="right">
+              <h3>Reviews ({pr.reviews.length})</h3>
+            </Tooltip>
             {pr.reviews.length === 0 ? (
               <div className={styles.empty}>No reviews yet</div>
             ) : (
@@ -151,46 +170,54 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
               </div>
             )}
             {pr.rebased_since_approval && (
-              <div className={styles.rebaseWarning}>Rebased since last approval</div>
+              <Tooltip text="New commits were force-pushed after the last approval — re-review may be needed" position="top">
+                <div className={styles.rebaseWarning}>Rebased since last approval</div>
+              </Tooltip>
             )}
           </section>
 
           {/* Team Progress */}
           {activeTeam.length > 0 && (
             <section className={styles.section}>
-              <h3>Team Progress</h3>
+              <Tooltip text="Track which team members have reviewed and approved" position="right">
+                <h3>Team Progress</h3>
+              </Tooltip>
               <div className={styles.progressList}>
                 {activeTeam.map((member) => {
                   const p = progress?.find((x) => x.team_member_id === member.id);
                   return (
                     <div key={member.id} className={styles.progressRow}>
                       <span className={styles.progressName}>{member.display_name}</span>
-                      <label className={styles.progressCheck}>
-                        <input
-                          type="checkbox"
-                          checked={p?.reviewed ?? false}
-                          onChange={(e) =>
-                            progressMutation.mutate({
-                              team_member_id: member.id,
-                              reviewed: e.target.checked,
-                            })
-                          }
-                        />
-                        R
-                      </label>
-                      <label className={styles.progressCheck}>
-                        <input
-                          type="checkbox"
-                          checked={p?.approved ?? false}
-                          onChange={(e) =>
-                            progressMutation.mutate({
-                              team_member_id: member.id,
-                              approved: e.target.checked,
-                            })
-                          }
-                        />
-                        A
-                      </label>
+                      <Tooltip text="Reviewed" position="top">
+                        <label className={styles.progressCheck}>
+                          <input
+                            type="checkbox"
+                            checked={p?.reviewed ?? false}
+                            onChange={(e) =>
+                              progressMutation.mutate({
+                                team_member_id: member.id,
+                                reviewed: e.target.checked,
+                              })
+                            }
+                          />
+                          R
+                        </label>
+                      </Tooltip>
+                      <Tooltip text="Approved" position="top">
+                        <label className={styles.progressCheck}>
+                          <input
+                            type="checkbox"
+                            checked={p?.approved ?? false}
+                            onChange={(e) =>
+                              progressMutation.mutate({
+                                team_member_id: member.id,
+                                approved: e.target.checked,
+                              })
+                            }
+                          />
+                          A
+                        </label>
+                      </Tooltip>
                     </div>
                   );
                 })}

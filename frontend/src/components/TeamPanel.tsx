@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { Tooltip } from './Tooltip';
 import styles from './TeamPanel.module.css';
 
 interface Props {
@@ -63,32 +64,37 @@ export function TeamPanel({ onClose }: Props) {
                   {m.github_login && (
                     <span className={styles.memberLogin}>@{m.github_login}</span>
                   )}
-                  <button
-                    className={styles.deleteBtn}
-                    onClick={() => deleteMutation.mutate(m.id)}
-                    title="Remove member"
-                  >
-                    x
-                  </button>
+                  <Tooltip text="Remove team member" position="left">
+                    <button
+                      className={styles.deleteBtn}
+                      onClick={() => deleteMutation.mutate(m.id)}
+                    >
+                      x
+                    </button>
+                  </Tooltip>
                 </div>
               ))}
             </div>
           )}
 
           <form className={styles.addForm} onSubmit={handleAdd}>
-            <input
-              className={styles.input}
-              placeholder="Display name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-            />
-            <input
-              className={styles.input}
-              placeholder="GitHub login"
-              value={githubLogin}
-              onChange={(e) => setGithubLogin(e.target.value)}
-              style={{ flex: 0.7 }}
-            />
+            <Tooltip text="Name shown in the dashboard (required)" position="top">
+              <input
+                className={styles.input}
+                placeholder="Display name"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+              />
+            </Tooltip>
+            <Tooltip text="GitHub username for matching reviews (optional)" position="top">
+              <input
+                className={styles.input}
+                placeholder="GitHub login"
+                value={githubLogin}
+                onChange={(e) => setGithubLogin(e.target.value)}
+                style={{ flex: 0.7 }}
+              />
+            </Tooltip>
             <button
               type="submit"
               className={styles.addBtn}

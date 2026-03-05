@@ -7,7 +7,8 @@ from loguru import logger
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.schemas import RepoCreate, RepoDetail, RepoSummary
+from src.api.schemas import AvailableRepo, RepoCreate, RepoDetail, RepoSummary
+from src.config.settings import settings
 from src.db.engine import get_session
 from src.models.tables import CheckRun, PRStack, PullRequest, TrackedRepo
 from src.services.github_client import GitHubClient
@@ -87,12 +88,39 @@ async def list_repos(session: AsyncSession = Depends(get_session)) -> list[RepoS
     return summaries
 
 
+@router.get("/available", response_model=list[AvailableRepo])
+async def list_available_repos(
+    session: AsyncSession = Depends(get_session),
+) -> list[AvailableRepo]:
+    """List org repos not yet tracked (excludes archived repos)."""
+    tracked = (await session.execute(select(TrackedRepo.full_name))).scalars().all()
+    tracked_set = set(tracked)
+
+    gh = GitHubClient()
+    try:
+        org_repos = await gh.list_org_repos(settings.github_org)
+    finally:
+        await gh.close()
+
+    return [
+        AvailableRepo(
+            name=r["name"],
+            full_name=r["full_name"],
+            description=r.get("description"),
+            private=r.get("private", False),
+        )
+        for r in org_repos
+        if not r.get("archived") and r["full_name"] not in tracked_set
+    ]
+
+
 @router.post("", response_model=RepoDetail, status_code=201)
 async def add_repo(
     body: RepoCreate, session: AsyncSession = Depends(get_session)
 ) -> RepoDetail:
     """Add a repo to track."""
-    full_name = f"{body.owner}/{body.name}"
+    owner = body.owner or settings.github_org
+    full_name = f"{owner}/{body.name}"
 
     # Check for duplicates
     existing = (
@@ -106,7 +134,7 @@ async def add_repo(
     # Validate repo exists on GitHub
     gh = GitHubClient()
     try:
-        gh_repo = await gh.get_repo(body.owner, body.name)
+        gh_repo = await gh.get_repo(owner, body.name)
     except Exception as exc:
         raise HTTPException(
             status_code=404, detail=f"GitHub repo {full_name} not found"
@@ -115,7 +143,7 @@ async def add_repo(
         await gh.close()
 
     repo = TrackedRepo(
-        owner=body.owner,
+        owner=owner,
         name=body.name,
         full_name=full_name,
         default_branch=gh_repo.get("default_branch", "main"),

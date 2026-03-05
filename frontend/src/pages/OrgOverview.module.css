@@ -89,7 +89,7 @@
   text-align: right;
 }
 
-/* Add repo card */
+/* Add repo card (button) */
 .addCard {
   background: var(--bg-surface);
   border: 1px dashed var(--border-default);
@@ -97,7 +97,24 @@
   padding: 1rem 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: border-color var(--transition-normal), transform var(--transition-fast);
+  font-family: inherit;
+  color: inherit;
+  min-height: 120px;
+}
+.addCard:hover {
+  border-color: var(--accent-blue);
+  transform: translateY(-2px);
+}
+
+.addIcon {
+  font-size: 1.8rem;
+  color: var(--text-muted);
+  line-height: 1;
 }
 
 .addTitle {
@@ -106,41 +123,147 @@
   font-weight: 600;
 }
 
-.addForm {
+/* Modal overlay */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
   display: flex;
-  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
 }
 
-.input {
-  flex: 1;
-  padding: 0.4rem 0.6rem;
+.modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  width: 90%;
+  max-width: 540px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.modalTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--accent-gold);
+  margin: 0;
+}
+
+.modalClose {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.modalClose:hover {
+  color: var(--text-primary);
+}
+
+.searchInput {
+  margin: 0.75rem 1.25rem;
+  padding: 0.5rem 0.75rem;
   background: var(--bg-input);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   outline: none;
 }
-.input:focus {
+.searchInput:focus {
   border-color: var(--accent-blue);
 }
 
-.addBtn {
-  padding: 0.4rem 1rem;
+.repoList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 1.25rem 1rem;
+}
+
+.listEmpty {
+  color: var(--text-dim);
+  text-align: center;
+  padding: 2rem 0;
+  font-size: 0.85rem;
+}
+
+.repoRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border-default);
+}
+.repoRow:last-child {
+  border-bottom: none;
+}
+
+.repoInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.repoRowName {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--accent-teal);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.privateBadge {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 0.1rem 0.35rem;
+}
+
+.repoDesc {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trackBtn {
+  padding: 0.35rem 0.85rem;
   background: var(--accent-green-bg);
   color: var(--accent-teal);
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  flex-shrink: 0;
   transition: background var(--transition-fast);
 }
-.addBtn:hover:not(:disabled) {
+.trackBtn:hover:not(:disabled) {
   background: var(--accent-green);
 }
-.addBtn:disabled {
+.trackBtn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

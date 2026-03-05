@@ -91,6 +91,13 @@ class GitHubClient:
             f"/repos/{owner}/{repo}/pulls/{number}/reviews"
         )
 
+    async def list_org_repos(self, org: str) -> list[dict[str, Any]]:
+        """List all repos in an organization."""
+        return await self._get_paginated(
+            f"/orgs/{org}/repos",
+            params={"type": "all", "sort": "full_name", "direction": "asc"},
+        )
+
     async def get_repo(self, owner: str, repo: str) -> dict[str, Any]:
         """Get repo metadata (for default_branch, etc.)."""
         return await self._get(f"/repos/{owner}/{repo}")

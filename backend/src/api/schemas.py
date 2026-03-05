@@ -7,8 +7,15 @@ from pydantic import BaseModel
 # ── Repos ────────────────────────────────────────────────────
 
 class RepoCreate(BaseModel):
-    owner: str
+    owner: str = ""
     name: str
+
+
+class AvailableRepo(BaseModel):
+    name: str
+    full_name: str
+    description: str | None = None
+    private: bool = False
 
 
 class RepoSummary(BaseModel):

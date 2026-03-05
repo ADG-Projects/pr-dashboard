@@ -107,15 +107,23 @@ export interface Progress {
   updated_at: string;
 }
 
+export interface AvailableRepo {
+  name: string;
+  full_name: string;
+  description: string | null;
+  private: boolean;
+}
+
 // ── API functions ────────────────────────────────
 
 export const api = {
   // Repos
   listRepos: () => request<RepoSummary[]>('/api/repos'),
-  addRepo: (owner: string, name: string) =>
+  listAvailableRepos: () => request<AvailableRepo[]>('/api/repos/available'),
+  addRepo: (name: string) =>
     request('/api/repos', {
       method: 'POST',
-      body: JSON.stringify({ owner, name }),
+      body: JSON.stringify({ name }),
     }),
   removeRepo: (id: number) =>
     request(`/api/repos/${id}`, { method: 'DELETE' }),

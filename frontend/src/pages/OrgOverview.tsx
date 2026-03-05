@@ -2,8 +2,8 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
-import { api, type RepoSummary } from '../api/client';
+import { useState, useMemo } from 'react';
+import { api, type RepoSummary, type AvailableRepo } from '../api/client';
 import styles from './OrgOverview.module.css';
 
 function healthColor(repo: RepoSummary): string {
@@ -12,25 +12,94 @@ function healthColor(repo: RepoSummary): string {
   return 'var(--ci-pass)';
 }
 
-export function OrgOverview() {
+function RepoBrowser({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
+  const [search, setSearch] = useState('');
+
+  const { data: available, isLoading } = useQuery({
+    queryKey: ['repos', 'available'],
+    queryFn: api.listAvailableRepos,
+  });
+
+  const addMutation = useMutation({
+    mutationFn: (name: string) => api.addRepo(name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['repos'] });
+    },
+  });
+
+  const filtered = useMemo(() => {
+    if (!available) return [];
+    if (!search) return available;
+    const q = search.toLowerCase();
+    return available.filter(
+      (r) =>
+        r.name.toLowerCase().includes(q) ||
+        r.description?.toLowerCase().includes(q),
+    );
+  }, [available, search]);
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.modalHeader}>
+          <h2 className={styles.modalTitle}>Add repositories</h2>
+          <button className={styles.modalClose} onClick={onClose}>
+            ×
+          </button>
+        </div>
+        <input
+          className={styles.searchInput}
+          placeholder="Search repos..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          autoFocus
+        />
+        <div className={styles.repoList}>
+          {isLoading && (
+            <div className={styles.listEmpty}>Loading org repos...</div>
+          )}
+          {!isLoading && filtered.length === 0 && (
+            <div className={styles.listEmpty}>
+              {search ? 'No matching repos' : 'All repos are already tracked'}
+            </div>
+          )}
+          {filtered.map((repo) => (
+            <div key={repo.full_name} className={styles.repoRow}>
+              <div className={styles.repoInfo}>
+                <span className={styles.repoRowName}>
+                  {repo.name}
+                  {repo.private && (
+                    <span className={styles.privateBadge}>private</span>
+                  )}
+                </span>
+                {repo.description && (
+                  <span className={styles.repoDesc}>{repo.description}</span>
+                )}
+              </div>
+              <button
+                className={styles.trackBtn}
+                disabled={addMutation.isPending}
+                onClick={() => addMutation.mutate(repo.name)}
+              >
+                Track
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function OrgOverview() {
   const { data: repos, isLoading } = useQuery({
     queryKey: ['repos'],
     queryFn: api.listRepos,
     refetchInterval: 30_000,
   });
 
-  const [owner, setOwner] = useState('');
-  const [name, setName] = useState('');
-
-  const addMutation = useMutation({
-    mutationFn: () => api.addRepo(owner, name),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['repos'] });
-      setOwner('');
-      setName('');
-    },
-  });
+  const [browserOpen, setBrowserOpen] = useState(false);
 
   if (isLoading) return <div className={styles.loading}>Loading repos...</div>;
 
@@ -85,34 +154,16 @@ export function OrgOverview() {
         ))}
 
         {/* Add repo card */}
-        <div className={styles.addCard}>
-          <div className={styles.addTitle}>Track a repo</div>
-          <div className={styles.addForm}>
-            <input
-              placeholder="owner"
-              value={owner}
-              onChange={(e) => setOwner(e.target.value)}
-              className={styles.input}
-            />
-            <input
-              placeholder="repo"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className={styles.input}
-            />
-            <button
-              onClick={() => addMutation.mutate()}
-              disabled={!owner || !name || addMutation.isPending}
-              className={styles.addBtn}
-            >
-              {addMutation.isPending ? 'Adding...' : 'Add'}
-            </button>
-          </div>
-          {addMutation.isError && (
-            <div className={styles.error}>{(addMutation.error as Error).message}</div>
-          )}
-        </div>
+        <button
+          className={styles.addCard}
+          onClick={() => setBrowserOpen(true)}
+        >
+          <span className={styles.addIcon}>+</span>
+          <span className={styles.addTitle}>Add repos</span>
+        </button>
       </div>
+
+      {browserOpen && <RepoBrowser onClose={() => setBrowserOpen(false)} />}
     </div>
   );
 }

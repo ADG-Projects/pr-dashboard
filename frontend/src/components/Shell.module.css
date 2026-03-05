@@ -41,6 +41,22 @@
   color: var(--accent-gold);
 }
 
+.teamBtn {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-md);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+.teamBtn:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
 .main {
   overflow: auto;
   padding: 1.5rem;

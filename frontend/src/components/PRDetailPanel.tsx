@@ -1,6 +1,6 @@
-/** Slide-out right panel showing PR detail, checks, reviews. */
+/** Slide-out right panel showing PR detail, checks, reviews, assignee, and team progress. */
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type PRDetail } from '../api/client';
 import { StatusDot } from './StatusDot';
 import styles from './PRDetailPanel.module.css';
@@ -12,6 +12,7 @@ interface Props {
 }
 
 export function PRDetailPanel({ repoId, prId, onClose }: Props) {
+  const qc = useQueryClient();
   const { data: pulls } = useQuery({
     queryKey: ['pulls', repoId],
     queryFn: () => api.listPulls(repoId),
@@ -26,6 +27,36 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
   });
 
   const pr: PRDetail | undefined = detail;
+
+  const { data: team } = useQuery({
+    queryKey: ['team'],
+    queryFn: api.listTeam,
+  });
+  const activeTeam = team?.filter((m) => m.is_active) || [];
+
+  const assigneeMutation = useMutation({
+    mutationFn: (assigneeId: number | null) =>
+      api.assignPr(repoId, prSummary!.number, assigneeId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pulls', repoId] });
+      qc.invalidateQueries({ queryKey: ['pr-detail', repoId, prSummary?.number] });
+    },
+  });
+
+  const { data: progress } = useQuery({
+    queryKey: ['progress', prId],
+    queryFn: () => api.getProgress(prId),
+    enabled: !!prId,
+  });
+
+  const progressMutation = useMutation({
+    mutationFn: (data: { team_member_id: number; reviewed?: boolean; approved?: boolean }) =>
+      api.updateProgress(prId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['progress', prId] });
+    },
+  });
+
 
   return (
     <div className={styles.panel}>
@@ -50,6 +81,25 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
 
       {pr && (
         <div className={styles.body}>
+          {/* Assignee */}
+          <section className={styles.section}>
+            <h3>Assignee</h3>
+            <select
+              className={styles.assigneeSelect}
+              value={pr.assignee_id ?? ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                assigneeMutation.mutate(val ? Number(val) : null);
+              }}
+              disabled={assigneeMutation.isPending}
+            >
+              <option value="">Unassigned</option>
+              {activeTeam.map((m) => (
+                <option key={m.id} value={m.id}>{m.display_name}</option>
+              ))}
+            </select>
+          </section>
+
           {/* Diff stats */}
           <section className={styles.section}>
             <h3>Changes</h3>
@@ -104,6 +154,49 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
               <div className={styles.rebaseWarning}>Rebased since last approval</div>
             )}
           </section>
+
+          {/* Team Progress */}
+          {activeTeam.length > 0 && (
+            <section className={styles.section}>
+              <h3>Team Progress</h3>
+              <div className={styles.progressList}>
+                {activeTeam.map((member) => {
+                  const p = progress?.find((x) => x.team_member_id === member.id);
+                  return (
+                    <div key={member.id} className={styles.progressRow}>
+                      <span className={styles.progressName}>{member.display_name}</span>
+                      <label className={styles.progressCheck}>
+                        <input
+                          type="checkbox"
+                          checked={p?.reviewed ?? false}
+                          onChange={(e) =>
+                            progressMutation.mutate({
+                              team_member_id: member.id,
+                              reviewed: e.target.checked,
+                            })
+                          }
+                        />
+                        R
+                      </label>
+                      <label className={styles.progressCheck}>
+                        <input
+                          type="checkbox"
+                          checked={p?.approved ?? false}
+                          onChange={(e) =>
+                            progressMutation.mutate({
+                              team_member_id: member.id,
+                              approved: e.target.checked,
+                            })
+                          }
+                        />
+                        A
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
         </div>
       )}
     </div>

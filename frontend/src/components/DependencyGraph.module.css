@@ -103,6 +103,17 @@
   margin-top: auto;
 }
 
+.assigneeBadge {
+  font-size: 0.5rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--accent-blue);
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
 .cardDiff {
   margin-left: auto;
   font-family: var(--font-mono);

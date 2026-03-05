@@ -3,17 +3,25 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
-from src.api.schemas import CheckRunOut, PRDetail, PRSummary, ReviewOut
+from src.api.schemas import (
+    AssigneeUpdate,
+    CheckRunOut,
+    PRDetail,
+    PRSummary,
+    ReviewOut,
+)
 from src.db.engine import get_session
 from src.models.tables import (
     CheckRun,
     PRStackMembership,
     PullRequest,
     Review,
+    TeamMember,
     TrackedRepo,
 )
+from src.services.events import broadcast_event
 
 router = APIRouter(prefix="/api/repos/{repo_id}", tags=["pulls"])
 
@@ -87,6 +95,8 @@ def _pr_to_summary(pr: PullRequest, stack_id: int | None = None) -> PRSummary:
         ci_status=_compute_ci_status(pr.check_runs),
         review_state=_compute_review_state(pr.reviews),
         stack_id=stack_id,
+        assignee_id=pr.assignee_id,
+        assignee_name=pr.assignee.display_name if pr.assignee else None,
         rebased_since_approval=_rebased_since_approval(pr),
     )
 
@@ -106,7 +116,11 @@ async def list_pulls(
 
     stmt = (
         select(PullRequest)
-        .options(selectinload(PullRequest.check_runs), selectinload(PullRequest.reviews))
+        .options(
+            selectinload(PullRequest.check_runs),
+            selectinload(PullRequest.reviews),
+            joinedload(PullRequest.assignee),
+        )
         .where(PullRequest.repo_id == repo_id, PullRequest.state == "open")
         .order_by(PullRequest.updated_at.desc())
     )
@@ -147,7 +161,11 @@ async def get_pull(
     """Get full PR detail with checks and reviews."""
     result = await session.execute(
         select(PullRequest)
-        .options(selectinload(PullRequest.check_runs), selectinload(PullRequest.reviews))
+        .options(
+            selectinload(PullRequest.check_runs),
+            selectinload(PullRequest.reviews),
+            joinedload(PullRequest.assignee),
+        )
         .where(PullRequest.repo_id == repo_id, PullRequest.number == number)
     )
     pr = result.scalar_one_or_none()
@@ -172,6 +190,8 @@ async def get_pull(
         updated_at=pr.updated_at,
         ci_status=_compute_ci_status(pr.check_runs),
         review_state=_compute_review_state(pr.reviews),
+        assignee_id=pr.assignee_id,
+        assignee_name=pr.assignee.display_name if pr.assignee else None,
         rebased_since_approval=_rebased_since_approval(pr),
         check_runs=[
             CheckRunOut(
@@ -193,3 +213,48 @@ async def get_pull(
             for r in pr.reviews
         ],
     )
+
+
+@router.patch("/pulls/{number}/assignee", response_model=PRSummary)
+async def update_assignee(
+    repo_id: int,
+    number: int,
+    body: AssigneeUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> PRSummary:
+    """Set or clear the assignee for a PR."""
+    result = await session.execute(
+        select(PullRequest)
+        .options(
+            selectinload(PullRequest.check_runs),
+            selectinload(PullRequest.reviews),
+            joinedload(PullRequest.assignee),
+        )
+        .where(PullRequest.repo_id == repo_id, PullRequest.number == number)
+    )
+    pr = result.scalar_one_or_none()
+    if not pr:
+        raise HTTPException(status_code=404, detail=f"PR #{number} not found")
+
+    if body.assignee_id is not None:
+        member = await session.get(TeamMember, body.assignee_id)
+        if not member:
+            raise HTTPException(status_code=404, detail="Team member not found")
+
+    pr.assignee_id = body.assignee_id
+    await session.commit()
+    await session.refresh(pr, attribute_names=["assignee"])
+
+    # Look up stack_id
+    membership = (
+        await session.execute(
+            select(PRStackMembership).where(PRStackMembership.pull_request_id == pr.id)
+        )
+    ).scalar_one_or_none()
+
+    await broadcast_event(
+        "assignee_update",
+        {"repo_id": repo_id, "number": number, "assignee_id": body.assignee_id},
+    )
+
+    return _pr_to_summary(pr, membership.stack_id if membership else None)

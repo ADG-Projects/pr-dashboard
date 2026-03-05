@@ -1,13 +1,16 @@
 /** App shell — sidebar nav + header + content area. */
 
+import { useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useSSE } from '../api/useSSE';
+import { TeamPanel } from './TeamPanel';
 import styles from './Shell.module.css';
 
 export function Shell() {
   const location = useLocation();
   useSSE();
   const isHome = location.pathname === '/';
+  const [showTeam, setShowTeam] = useState(false);
 
   return (
     <div className={styles.shell}>
@@ -15,11 +18,13 @@ export function Shell() {
         <Link to="/" className={styles.logo}>PR Dashboard</Link>
         <nav className={styles.nav}>
           <Link to="/" className={isHome ? styles.active : ''}>Repos</Link>
+          <button className={styles.teamBtn} onClick={() => setShowTeam(true)}>Team</button>
         </nav>
       </header>
       <main className={styles.main}>
         <Outlet />
       </main>
+      {showTeam && <TeamPanel onClose={() => setShowTeam(false)} />}
     </div>
   );
 }

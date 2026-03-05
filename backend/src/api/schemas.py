@@ -82,6 +82,8 @@ class PRSummary(BaseModel):
     ci_status: str = "unknown"  # computed: success, failure, pending, unknown
     review_state: str = "none"  # computed: approved, changes_requested, reviewed, none
     stack_id: int | None = None
+    assignee_id: int | None = None
+    assignee_name: str | None = None
     rebased_since_approval: bool = False
 
 
@@ -165,6 +167,14 @@ class QualitySnapshotOut(BaseModel):
     pytest_errors: int
     mypy_errors: int
     snapshot_at: datetime
+
+
+# ── Assignee ─────────────────────────────────────────────────
+
+
+class AssigneeUpdate(BaseModel):
+    assignee_id: int | None = None
+
 
 
 # ── Auth ─────────────────────────────────────────────────────

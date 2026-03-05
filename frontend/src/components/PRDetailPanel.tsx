@@ -1,6 +1,6 @@
 /** Slide-out right panel showing PR detail, checks, reviews. */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api, type PRDetail } from '../api/client';
 import { StatusDot } from './StatusDot';
 import styles from './PRDetailPanel.module.css';
@@ -12,10 +12,6 @@ interface Props {
 }
 
 export function PRDetailPanel({ repoId, prId, onClose }: Props) {
-  const qc = useQueryClient();
-
-  // We need the PR number — look it up from the pulls cache or fetch it
-  // For simplicity, we'll use a separate query that matches by ID
   const { data: pulls } = useQuery({
     queryKey: ['pulls', repoId],
     queryFn: () => api.listPulls(repoId),
@@ -30,44 +26,6 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
   });
 
   const pr: PRDetail | undefined = detail;
-
-  const trackingMutation = useMutation({
-    mutationFn: (data: { reviewed?: boolean; approved?: boolean }) =>
-      api.updateTracking(repoId, prSummary!.number, data),
-    onMutate: async (data) => {
-      await qc.cancelQueries({ queryKey: ['pr-detail', repoId, prSummary?.number] });
-      await qc.cancelQueries({ queryKey: ['pulls', repoId] });
-
-      const prevDetail = qc.getQueryData<PRDetail>(['pr-detail', repoId, prSummary?.number]);
-      const prevPulls = qc.getQueryData(['pulls', repoId]);
-
-      if (prevDetail) {
-        qc.setQueryData<PRDetail>(['pr-detail', repoId, prSummary?.number], {
-          ...prevDetail,
-          ...(data.reviewed !== undefined && { dashboard_reviewed: data.reviewed }),
-          ...(data.approved !== undefined && {
-            dashboard_approved: data.approved,
-            rebased_since_approval: false,
-          }),
-        });
-      }
-
-      return { prevDetail, prevPulls };
-    },
-    onError: (_err, _data, context) => {
-      if (context?.prevDetail) {
-        qc.setQueryData(['pr-detail', repoId, prSummary?.number], context.prevDetail);
-      }
-      if (context?.prevPulls) {
-        qc.setQueryData(['pulls', repoId], context.prevPulls);
-      }
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['pulls', repoId] });
-      qc.invalidateQueries({ queryKey: ['pr-detail', repoId, prSummary?.number] });
-      qc.invalidateQueries({ queryKey: ['stacks', repoId] });
-    },
-  });
 
   return (
     <div className={styles.panel}>
@@ -142,36 +100,9 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
                 ))}
               </div>
             )}
-          </section>
-
-          {/* Dashboard Tracking */}
-          <section className={styles.section}>
-            <h3>Tracking</h3>
-            <div className={styles.trackingRow}>
-              <button
-                className={`${styles.trackingBtn} ${pr.dashboard_reviewed ? styles.trackingActive : ''}`}
-                onClick={() => trackingMutation.mutate({ reviewed: !pr.dashboard_reviewed })}
-                disabled={trackingMutation.isPending}
-                title="Mark as reviewed"
-              >
-                R
-              </button>
-              <span className={styles.trackingLabel}>Reviewed</span>
-            </div>
-            <div className={styles.trackingRow}>
-              <button
-                className={`${styles.trackingBtn} ${pr.dashboard_approved ? styles.trackingActive : ''} ${pr.rebased_since_approval ? styles.trackingWarn : ''}`}
-                onClick={() => trackingMutation.mutate({ approved: !pr.dashboard_approved })}
-                disabled={trackingMutation.isPending}
-                title={pr.rebased_since_approval ? 'Rebased since approval — click to re-confirm' : 'Mark as approved'}
-              >
-                A
-              </button>
-              <span className={styles.trackingLabel}>Approved</span>
-              {pr.rebased_since_approval && (
-                <span className={styles.rebaseWarning}>rebased</span>
-              )}
-            </div>
+            {pr.rebased_since_approval && (
+              <div className={styles.rebaseWarning}>Rebased since last approval</div>
+            )}
           </section>
         </div>
       )}

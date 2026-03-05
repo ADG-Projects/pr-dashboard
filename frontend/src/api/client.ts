@@ -50,8 +50,6 @@ export interface PRSummary {
   ci_status: string;
   review_state: string;
   stack_id: number | null;
-  dashboard_reviewed: boolean;
-  dashboard_approved: boolean;
   rebased_since_approval: boolean;
 }
 
@@ -141,11 +139,6 @@ export const api = {
   },
   getPull: (repoId: number, number: number) =>
     request<PRDetail>(`/api/repos/${repoId}/pulls/${number}`),
-  updateTracking: (repoId: number, number: number, data: { reviewed?: boolean; approved?: boolean }) =>
-    request(`/api/repos/${repoId}/pulls/${number}/tracking`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
 
   // Stacks
   listStacks: (repoId: number) =>

@@ -118,62 +118,6 @@
 .reviewer { color: var(--accent-teal); }
 .reviewState { color: var(--text-dim); font-size: 0.72rem; margin-left: auto; }
 
-/* Tracking toggles */
-.trackingRow {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.4rem;
-}
-
-.trackingBtn {
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-sm);
-  border: 2px solid var(--border-default);
-  background: transparent;
-  color: var(--text-dim);
-  font-weight: 700;
-  font-size: 0.72rem;
-  cursor: pointer;
-  transition: all 0.15s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.trackingBtn:hover {
-  border-color: var(--accent-teal);
-  color: var(--accent-teal);
-}
-
-.trackingActive {
-  background: var(--accent-green);
-  border-color: var(--accent-green);
-  color: #fff;
-}
-.trackingActive:hover {
-  background: var(--accent-green);
-  border-color: var(--accent-green);
-  color: #fff;
-  opacity: 0.85;
-}
-
-.trackingWarn {
-  background: #b58900;
-  border-color: #b58900;
-  color: #fff;
-}
-.trackingWarn:hover {
-  background: #b58900;
-  border-color: #b58900;
-  opacity: 0.85;
-}
-
-.trackingLabel {
-  font-size: 0.78rem;
-  color: var(--text-secondary);
-}
-
 .rebaseWarning {
   font-size: 0.65rem;
   color: #b58900;

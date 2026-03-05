@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 # ── Repos ────────────────────────────────────────────────────
 
+
 class RepoCreate(BaseModel):
     owner: str = ""
     name: str
@@ -46,6 +47,7 @@ class RepoDetail(BaseModel):
 
 # ── Pull Requests ────────────────────────────────────────────
 
+
 class CheckRunOut(BaseModel):
     id: int
     name: str
@@ -80,8 +82,6 @@ class PRSummary(BaseModel):
     ci_status: str = "unknown"  # computed: success, failure, pending, unknown
     review_state: str = "none"  # computed: approved, changes_requested, reviewed, none
     stack_id: int | None = None
-    dashboard_reviewed: bool = False
-    dashboard_approved: bool = False
     rebased_since_approval: bool = False
 
 
@@ -91,6 +91,7 @@ class PRDetail(PRSummary):
 
 
 # ── Stacks ───────────────────────────────────────────────────
+
 
 class StackMemberOut(BaseModel):
     pull_request_id: int
@@ -108,6 +109,7 @@ class StackOut(BaseModel):
 
 
 # ── Team ─────────────────────────────────────────────────────
+
 
 class TeamMemberCreate(BaseModel):
     display_name: str
@@ -133,6 +135,7 @@ class TeamMemberOut(BaseModel):
 
 # ── Progress ─────────────────────────────────────────────────
 
+
 class ProgressUpdate(BaseModel):
     team_member_id: int
     reviewed: bool | None = None
@@ -153,6 +156,7 @@ class ProgressOut(BaseModel):
 
 # ── Quality ──────────────────────────────────────────────────
 
+
 class QualitySnapshotOut(BaseModel):
     id: int
     pull_request_id: int
@@ -163,14 +167,8 @@ class QualitySnapshotOut(BaseModel):
     snapshot_at: datetime
 
 
-# ── Tracking ─────────────────────────────────────────────────
-
-class TrackingUpdate(BaseModel):
-    reviewed: bool | None = None
-    approved: bool | None = None
-
-
 # ── Auth ─────────────────────────────────────────────────────
+
 
 class LoginRequest(BaseModel):
     password: str

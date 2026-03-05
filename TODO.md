@@ -1,7 +1,7 @@
 # PR Dashboard — TODO
 
 ## Completed
-- [x] Sticky review/approval tracking with rebase detection: per-PR R/A toggles that persist across rebases, with visual warning when HEAD changes after approval (2026-03-05)
+- [x] Rebase detection from GitHub reviews: derive review/approval state from actual GitHub reviews, warn when PR is rebased after last approval by comparing review commit_id vs head_sha (2026-03-05)
 - [x] Org repo browser: browse and track repos from configured GitHub org instead of manual input (2026-03-05)
 - [x] Backend foundation: FastAPI + SQLAlchemy async + all DB models (2026-03-04)
 - [x] GitHub client: async httpx wrapper for PRs, checks, reviews (2026-03-04)

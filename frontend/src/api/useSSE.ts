@@ -15,12 +15,6 @@ export function useSSE() {
       qc.invalidateQueries({ queryKey: ['repos'] });
     });
 
-    source.addEventListener('tracking_update', (e) => {
-      const data = JSON.parse(e.data);
-      qc.invalidateQueries({ queryKey: ['pulls', data.repo_id] });
-      qc.invalidateQueries({ queryKey: ['stacks', data.repo_id] });
-    });
-
     return () => source.close();
   }, [qc]);
 }

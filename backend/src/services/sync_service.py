@@ -53,10 +53,10 @@ class SyncService:
         """Run one full sync cycle across all tracked repos."""
         async with async_session_factory() as session:
             repos = (
-                await session.execute(
-                    select(TrackedRepo).where(TrackedRepo.is_active.is_(True))
-                )
-            ).scalars().all()
+                (await session.execute(select(TrackedRepo).where(TrackedRepo.is_active.is_(True))))
+                .scalars()
+                .all()
+            )
 
         for repo in repos:
             try:
@@ -88,9 +88,7 @@ class SyncService:
 
                 # Sync workflow runs (via Actions API)
                 try:
-                    runs = await self.github.get_workflow_runs(
-                        owner, name, gh_pr["head"]["sha"]
-                    )
+                    runs = await self.github.get_workflow_runs(owner, name, gh_pr["head"]["sha"])
                     checks = [
                         {
                             "name": r["name"],
@@ -102,7 +100,9 @@ class SyncService:
                     ]
                     await self._upsert_check_runs(session, pr.id, checks)
                 except Exception as exc:
-                    logger.warning(f"  Could not fetch workflow runs for PR #{gh_pr['number']}: {exc}")
+                    logger.warning(
+                        f"  Could not fetch workflow runs for PR #{gh_pr['number']}: {exc}"
+                    )
 
                 # Sync reviews
                 try:
@@ -128,9 +128,7 @@ class SyncService:
         await broadcast_event("sync_complete", {"repo_id": repo_id, "owner": owner, "name": name})
         logger.info(f"  Sync complete for {owner}/{name}")
 
-    async def _upsert_pr(
-        self, session: AsyncSession, repo_id: int, gh_pr: dict
-    ) -> PullRequest:
+    async def _upsert_pr(self, session: AsyncSession, repo_id: int, gh_pr: dict) -> PullRequest:
         """Insert or update a pull request from GitHub data."""
         result = await session.execute(
             select(PullRequest).where(
@@ -182,10 +180,10 @@ class SyncService:
         """Replace check runs for a PR (simpler than individual upsert)."""
         # Delete existing checks for this PR
         existing = (
-            await session.execute(
-                select(CheckRun).where(CheckRun.pull_request_id == pr_id)
-            )
-        ).scalars().all()
+            (await session.execute(select(CheckRun).where(CheckRun.pull_request_id == pr_id)))
+            .scalars()
+            .all()
+        )
         for check in existing:
             await session.delete(check)
 
@@ -202,15 +200,13 @@ class SyncService:
                 )
             )
 
-    async def _upsert_reviews(
-        self, session: AsyncSession, pr_id: int, reviews: list[dict]
-    ) -> None:
+    async def _upsert_reviews(self, session: AsyncSession, pr_id: int, reviews: list[dict]) -> None:
         """Replace reviews for a PR."""
         existing = (
-            await session.execute(
-                select(Review).where(Review.pull_request_id == pr_id)
-            )
-        ).scalars().all()
+            (await session.execute(select(Review).where(Review.pull_request_id == pr_id)))
+            .scalars()
+            .all()
+        )
         for review in existing:
             await session.delete(review)
 
@@ -223,6 +219,7 @@ class SyncService:
                     pull_request_id=pr_id,
                     reviewer=review["user"]["login"],
                     state=review["state"],
+                    commit_id=review.get("commit_id"),
                     submitted_at=submitted,
                 )
             )

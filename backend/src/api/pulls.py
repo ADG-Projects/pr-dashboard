@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.api.schemas import CheckRunOut, PRDetail, PRSummary, ReviewOut, TrackingUpdate
+from src.api.schemas import CheckRunOut, PRDetail, PRSummary, ReviewOut
 from src.db.engine import get_session
 from src.models.tables import (
     CheckRun,
@@ -14,7 +14,6 @@ from src.models.tables import (
     Review,
     TrackedRepo,
 )
-from src.services.events import broadcast_event
 
 router = APIRouter(prefix="/api/repos/{repo_id}", tags=["pulls"])
 
@@ -54,8 +53,21 @@ def _compute_review_state(reviews: list[Review]) -> str:
     return "reviewed" if states else "none"
 
 
+def _rebased_since_approval(pr: PullRequest) -> bool:
+    """Check if the PR was rebased after its most recent GitHub approval."""
+    if not pr.head_sha or not pr.reviews:
+        return False
+    latest: dict[str, Review] = {}
+    for r in sorted(pr.reviews, key=lambda x: x.submitted_at):
+        latest[r.reviewer] = r
+    approved = [r for r in latest.values() if r.state == "APPROVED"]
+    if not approved:
+        return False
+    newest_approval = max(approved, key=lambda r: r.submitted_at)
+    return newest_approval.commit_id is not None and newest_approval.commit_id != pr.head_sha
+
+
 def _pr_to_summary(pr: PullRequest, stack_id: int | None = None) -> PRSummary:
-    rebased = pr.dashboard_approved and pr.head_sha != pr.approved_at_sha
     return PRSummary(
         id=pr.id,
         number=pr.number,
@@ -75,9 +87,7 @@ def _pr_to_summary(pr: PullRequest, stack_id: int | None = None) -> PRSummary:
         ci_status=_compute_ci_status(pr.check_runs),
         review_state=_compute_review_state(pr.reviews),
         stack_id=stack_id,
-        dashboard_reviewed=pr.dashboard_reviewed,
-        dashboard_approved=pr.dashboard_approved,
-        rebased_since_approval=rebased,
+        rebased_since_approval=_rebased_since_approval(pr),
     )
 
 
@@ -109,12 +119,16 @@ async def list_pulls(
 
     # Build stack_id map
     memberships = (
-        await session.execute(
-            select(PRStackMembership).where(
-                PRStackMembership.pull_request_id.in_([pr.id for pr in prs])
+        (
+            await session.execute(
+                select(PRStackMembership).where(
+                    PRStackMembership.pull_request_id.in_([pr.id for pr in prs])
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     stack_map = {m.pull_request_id: m.stack_id for m in memberships}
 
     summaries = [_pr_to_summary(pr, stack_map.get(pr.id)) for pr in prs]
@@ -140,7 +154,6 @@ async def get_pull(
     if not pr:
         raise HTTPException(status_code=404, detail=f"PR #{number} not found")
 
-    rebased = pr.dashboard_approved and pr.head_sha != pr.approved_at_sha
     return PRDetail(
         id=pr.id,
         number=pr.number,
@@ -159,9 +172,7 @@ async def get_pull(
         updated_at=pr.updated_at,
         ci_status=_compute_ci_status(pr.check_runs),
         review_state=_compute_review_state(pr.reviews),
-        dashboard_reviewed=pr.dashboard_reviewed,
-        dashboard_approved=pr.dashboard_approved,
-        rebased_since_approval=rebased,
+        rebased_since_approval=_rebased_since_approval(pr),
         check_runs=[
             CheckRunOut(
                 id=c.id,
@@ -182,39 +193,3 @@ async def get_pull(
             for r in pr.reviews
         ],
     )
-
-
-@router.put("/pulls/{number}/tracking")
-async def update_tracking(
-    repo_id: int,
-    number: int,
-    body: TrackingUpdate,
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    """Toggle dashboard reviewed/approved for a PR."""
-    result = await session.execute(
-        select(PullRequest).where(
-            PullRequest.repo_id == repo_id, PullRequest.number == number
-        )
-    )
-    pr = result.scalar_one_or_none()
-    if not pr:
-        raise HTTPException(status_code=404, detail=f"PR #{number} not found")
-
-    if body.reviewed is not None:
-        pr.dashboard_reviewed = body.reviewed
-    if body.approved is not None:
-        pr.dashboard_approved = body.approved
-        if body.approved:
-            pr.approved_at_sha = pr.head_sha
-        else:
-            pr.approved_at_sha = None
-
-    await session.commit()
-
-    await broadcast_event(
-        "tracking_update",
-        {"repo_id": repo_id, "number": number},
-    )
-
-    return {"ok": True}

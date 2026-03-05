@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.api.pulls import _compute_ci_status, _compute_review_state
+from src.api.pulls import _compute_ci_status, _compute_review_state, _rebased_since_approval
 from src.api.schemas import PRSummary, StackMemberOut, StackOut
 from src.db.engine import get_session
 from src.models.tables import (
@@ -19,7 +19,6 @@ router = APIRouter(prefix="/api/repos/{repo_id}", tags=["stacks"])
 
 
 def _pr_summary_from_model(pr: PullRequest) -> PRSummary:
-    rebased = pr.dashboard_approved and pr.head_sha != pr.approved_at_sha
     return PRSummary(
         id=pr.id,
         number=pr.number,
@@ -38,36 +37,36 @@ def _pr_summary_from_model(pr: PullRequest) -> PRSummary:
         updated_at=pr.updated_at,
         ci_status=_compute_ci_status(pr.check_runs),
         review_state=_compute_review_state(pr.reviews),
-        dashboard_reviewed=pr.dashboard_reviewed,
-        dashboard_approved=pr.dashboard_approved,
-        rebased_since_approval=rebased,
+        rebased_since_approval=_rebased_since_approval(pr),
     )
 
 
 @router.get("/stacks", response_model=list[StackOut])
-async def list_stacks(
-    repo_id: int, session: AsyncSession = Depends(get_session)
-) -> list[StackOut]:
+async def list_stacks(repo_id: int, session: AsyncSession = Depends(get_session)) -> list[StackOut]:
     """List detected stacks for a repo."""
     repo = await session.get(TrackedRepo, repo_id)
     if not repo:
         raise HTTPException(status_code=404, detail="Repo not found")
 
     stacks = (
-        await session.execute(
-            select(PRStack)
-            .where(PRStack.repo_id == repo_id)
-            .options(
-                selectinload(PRStack.memberships).selectinload(
-                    PRStackMembership.pull_request
-                ).selectinload(PullRequest.check_runs),
-                selectinload(PRStack.memberships).selectinload(
-                    PRStackMembership.pull_request
-                ).selectinload(PullRequest.reviews),
+        (
+            await session.execute(
+                select(PRStack)
+                .where(PRStack.repo_id == repo_id)
+                .options(
+                    selectinload(PRStack.memberships)
+                    .selectinload(PRStackMembership.pull_request)
+                    .selectinload(PullRequest.check_runs),
+                    selectinload(PRStack.memberships)
+                    .selectinload(PRStackMembership.pull_request)
+                    .selectinload(PullRequest.reviews),
+                )
+                .order_by(PRStack.detected_at.desc())
             )
-            .order_by(PRStack.detected_at.desc())
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     return [
         StackOut(
@@ -98,12 +97,12 @@ async def get_stack(
         select(PRStack)
         .where(PRStack.id == stack_id, PRStack.repo_id == repo_id)
         .options(
-            selectinload(PRStack.memberships).selectinload(
-                PRStackMembership.pull_request
-            ).selectinload(PullRequest.check_runs),
-            selectinload(PRStack.memberships).selectinload(
-                PRStackMembership.pull_request
-            ).selectinload(PullRequest.reviews),
+            selectinload(PRStack.memberships)
+            .selectinload(PRStackMembership.pull_request)
+            .selectinload(PullRequest.check_runs),
+            selectinload(PRStack.memberships)
+            .selectinload(PRStackMembership.pull_request)
+            .selectinload(PullRequest.reviews),
         )
     )
     stack = result.scalar_one_or_none()

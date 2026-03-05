@@ -27,9 +27,7 @@ class TrackedRepo(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     default_branch: Mapped[str] = mapped_column(String(255), default="main")
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     pull_requests: Mapped[list["PullRequest"]] = relationship(back_populates="repo")
     stacks: Mapped[list["PRStack"]] = relationship(back_populates="repo")
@@ -54,9 +52,6 @@ class PullRequest(Base):
     mergeable_state: Mapped[str | None] = mapped_column(String(50))
     html_url: Mapped[str] = mapped_column(String(1024), nullable=False)
     head_sha: Mapped[str | None] = mapped_column(String(40))
-    dashboard_reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
-    dashboard_approved: Mapped[bool] = mapped_column(Boolean, default=False)
-    approved_at_sha: Mapped[str | None] = mapped_column(String(40))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     merged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -87,9 +82,7 @@ class CheckRun(Base):
     __tablename__ = "check_runs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    pull_request_id: Mapped[int] = mapped_column(
-        ForeignKey("pull_requests.id", ondelete="CASCADE")
-    )
+    pull_request_id: Mapped[int] = mapped_column(ForeignKey("pull_requests.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     conclusion: Mapped[str | None] = mapped_column(String(50))  # success, failure, etc.
@@ -105,11 +98,10 @@ class Review(Base):
     __tablename__ = "reviews"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    pull_request_id: Mapped[int] = mapped_column(
-        ForeignKey("pull_requests.id", ondelete="CASCADE")
-    )
+    pull_request_id: Mapped[int] = mapped_column(ForeignKey("pull_requests.id", ondelete="CASCADE"))
     reviewer: Mapped[str] = mapped_column(String(255), nullable=False)
     state: Mapped[str] = mapped_column(String(50), nullable=False)
+    commit_id: Mapped[str | None] = mapped_column(String(40))
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     pull_request: Mapped["PullRequest"] = relationship(back_populates="reviews")
@@ -138,9 +130,7 @@ class PRStackMembership(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     stack_id: Mapped[int] = mapped_column(ForeignKey("pr_stacks.id", ondelete="CASCADE"))
-    pull_request_id: Mapped[int] = mapped_column(
-        ForeignKey("pull_requests.id", ondelete="CASCADE")
-    )
+    pull_request_id: Mapped[int] = mapped_column(ForeignKey("pull_requests.id", ondelete="CASCADE"))
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     parent_pr_id: Mapped[int | None] = mapped_column(ForeignKey("pull_requests.id"))
 
@@ -159,9 +149,7 @@ class TeamMember(Base):
     github_login: Mapped[str | None] = mapped_column(String(255))
     email: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     progress: Mapped[list["UserProgress"]] = relationship(back_populates="team_member")
 
@@ -173,12 +161,8 @@ class UserProgress(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    pull_request_id: Mapped[int] = mapped_column(
-        ForeignKey("pull_requests.id", ondelete="CASCADE")
-    )
-    team_member_id: Mapped[int] = mapped_column(
-        ForeignKey("team_members.id", ondelete="CASCADE")
-    )
+    pull_request_id: Mapped[int] = mapped_column(ForeignKey("pull_requests.id", ondelete="CASCADE"))
+    team_member_id: Mapped[int] = mapped_column(ForeignKey("team_members.id", ondelete="CASCADE"))
     reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
     approved: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str | None] = mapped_column(Text)
@@ -194,9 +178,7 @@ class QualitySnapshot(Base):
     __tablename__ = "quality_snapshots"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    pull_request_id: Mapped[int] = mapped_column(
-        ForeignKey("pull_requests.id", ondelete="CASCADE")
-    )
+    pull_request_id: Mapped[int] = mapped_column(ForeignKey("pull_requests.id", ondelete="CASCADE"))
     pytest_passed: Mapped[int] = mapped_column(Integer, default=0)
     pytest_failed: Mapped[int] = mapped_column(Integer, default=0)
     pytest_errors: Mapped[int] = mapped_column(Integer, default=0)

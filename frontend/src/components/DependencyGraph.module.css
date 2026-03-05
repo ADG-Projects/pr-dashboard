@@ -165,25 +165,21 @@
   opacity: 0.55;
 }
 
-/* Tracking border states */
+/* Review state border indicators */
 .borderApproved {
   border-left: 4px solid var(--accent-green);
 }
 .borderRebased {
   border-left: 4px solid #b58900;
 }
+.borderChanges {
+  border-left: 4px solid var(--accent-red);
+}
 .borderReviewed {
   border-left: 4px solid var(--accent-teal);
 }
 
-/* Tracking letter badges */
-.trackingBadges {
-  display: flex;
-  gap: 2px;
-  margin-left: 0.15rem;
-}
-
-.badgeR, .badgeA, .badgeWarn {
+.badgeWarn {
   font-size: 0.5rem;
   font-weight: 700;
   width: 14px;
@@ -193,13 +189,5 @@
   align-items: center;
   justify-content: center;
   color: #fff;
-}
-.badgeR {
-  background: var(--accent-teal);
-}
-.badgeA {
-  background: var(--accent-green);
-}
-.badgeWarn {
   background: #b58900;
 }

@@ -211,10 +211,11 @@ export function DependencyGraph({ prs, stacks, highlightStackId, selectedPrId, o
   const isDimmed = useCallback((prId: number) =>
     highlightedPrIds != null && !highlightedPrIds.has(prId), [highlightedPrIds]);
 
-  function trackingBorderClass(pr: PRSummary): string {
-    if (pr.dashboard_approved && !pr.rebased_since_approval) return styles.borderApproved;
-    if (pr.dashboard_approved && pr.rebased_since_approval) return styles.borderRebased;
-    if (pr.dashboard_reviewed) return styles.borderReviewed;
+  function reviewBorderClass(pr: PRSummary): string {
+    if (pr.review_state === 'approved' && !pr.rebased_since_approval) return styles.borderApproved;
+    if (pr.review_state === 'approved' && pr.rebased_since_approval) return styles.borderRebased;
+    if (pr.review_state === 'changes_requested') return styles.borderChanges;
+    if (pr.review_state === 'reviewed') return styles.borderReviewed;
     return '';
   }
 
@@ -237,13 +238,8 @@ export function DependencyGraph({ prs, stacks, highlightStackId, selectedPrId, o
         <div className={styles.cardFooter}>
           <StatusDot status={pr.ci_status} title={`CI: ${pr.ci_status}`} size={7} />
           <StatusDot status={pr.review_state} title={`Review: ${pr.review_state}`} size={7} />
-          {(pr.dashboard_reviewed || pr.dashboard_approved) && (
-            <span className={styles.trackingBadges}>
-              {pr.dashboard_reviewed && <span className={styles.badgeR} title="Reviewed">R</span>}
-              {pr.dashboard_approved && (
-                <span className={pr.rebased_since_approval ? styles.badgeWarn : styles.badgeA} title={pr.rebased_since_approval ? 'Approved (rebased)' : 'Approved'}>A</span>
-              )}
-            </span>
+          {pr.rebased_since_approval && (
+            <span className={styles.badgeWarn} title="Rebased since approval">!</span>
           )}
           <span className={styles.cardDiff}>
             <span className={styles.add}>+{pr.additions}</span>
@@ -280,7 +276,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, selectedPrId, o
             return (
               <div
                 key={pos.pr.id}
-                className={`${styles.card} ${isSelected ? styles.cardSelected : ''} ${dimmed ? styles.cardDimmed : ''} ${trackingBorderClass(pos.pr)}`}
+                className={`${styles.card} ${isSelected ? styles.cardSelected : ''} ${dimmed ? styles.cardDimmed : ''} ${reviewBorderClass(pos.pr)}`}
                 style={{ left: pos.x, top: pos.y, width: CARD_W, height: CARD_H }}
                 onClick={() => onSelectPr(isSelected ? null : pos.pr.id)}
               >
@@ -301,7 +297,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, selectedPrId, o
               return (
                 <div
                   key={pr.id}
-                  className={`${styles.standaloneCard} ${isSelected ? styles.cardSelected : ''} ${dimmed ? styles.cardDimmed : ''} ${trackingBorderClass(pr)}`}
+                  className={`${styles.standaloneCard} ${isSelected ? styles.cardSelected : ''} ${dimmed ? styles.cardDimmed : ''} ${reviewBorderClass(pr)}`}
                   onClick={() => onSelectPr(isSelected ? null : pr.id)}
                 >
                   {renderCard(pr)}

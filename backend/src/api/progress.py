@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.schemas import ProgressOut, ProgressUpdate
 from src.db.engine import get_session
-from src.models.tables import PullRequest, TeamMember, UserProgress
+from src.models.tables import PullRequest, User, UserProgress
 from src.services.events import broadcast_event
 
 router = APIRouter(prefix="/api/pulls", tags=["progress"])
@@ -16,15 +16,15 @@ router = APIRouter(prefix="/api/pulls", tags=["progress"])
 async def get_progress(
     pr_id: int, session: AsyncSession = Depends(get_session)
 ) -> list[ProgressOut]:
-    """Get all team members' progress on a PR."""
+    """Get all users' progress on a PR."""
     pr = await session.get(PullRequest, pr_id)
     if not pr:
         raise HTTPException(status_code=404, detail="PR not found")
 
     results = (
         await session.execute(
-            select(UserProgress, TeamMember)
-            .join(TeamMember)
+            select(UserProgress, User)
+            .join(User)
             .where(UserProgress.pull_request_id == pr_id)
         )
     ).all()
@@ -33,14 +33,14 @@ async def get_progress(
         ProgressOut(
             id=progress.id,
             pull_request_id=progress.pull_request_id,
-            team_member_id=progress.team_member_id,
-            team_member_name=member.display_name,
+            user_id=progress.user_id,
+            user_name=user.name or user.login,
             reviewed=progress.reviewed,
             approved=progress.approved,
             notes=progress.notes,
             updated_at=progress.updated_at,
         )
-        for progress, member in results
+        for progress, user in results
     ]
 
 
@@ -50,20 +50,19 @@ async def update_progress(
     body: ProgressUpdate,
     session: AsyncSession = Depends(get_session),
 ) -> ProgressOut:
-    """Update a team member's progress on a PR (upsert)."""
+    """Update a user's progress on a PR (upsert)."""
     pr = await session.get(PullRequest, pr_id)
     if not pr:
         raise HTTPException(status_code=404, detail="PR not found")
 
-    member = await session.get(TeamMember, body.team_member_id)
-    if not member:
-        raise HTTPException(status_code=404, detail="Team member not found")
+    user = await session.get(User, body.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-    # Upsert
     result = await session.execute(
         select(UserProgress).where(
             UserProgress.pull_request_id == pr_id,
-            UserProgress.team_member_id == body.team_member_id,
+            UserProgress.user_id == body.user_id,
         )
     )
     progress = result.scalar_one_or_none()
@@ -71,7 +70,7 @@ async def update_progress(
     if progress is None:
         progress = UserProgress(
             pull_request_id=pr_id,
-            team_member_id=body.team_member_id,
+            user_id=body.user_id,
             reviewed=body.reviewed or False,
             approved=body.approved or False,
             notes=body.notes,
@@ -91,20 +90,19 @@ async def update_progress(
     out = ProgressOut(
         id=progress.id,
         pull_request_id=progress.pull_request_id,
-        team_member_id=progress.team_member_id,
-        team_member_name=member.display_name,
+        user_id=progress.user_id,
+        user_name=user.name or user.login,
         reviewed=progress.reviewed,
         approved=progress.approved,
         notes=progress.notes,
         updated_at=progress.updated_at,
     )
 
-    # Broadcast progress update via SSE
     await broadcast_event(
         "progress_update",
         {
             "pr_id": pr_id,
-            "team_member_id": body.team_member_id,
+            "user_id": body.user_id,
             "reviewed": progress.reviewed,
             "approved": progress.approved,
         },

@@ -1,90 +1,59 @@
-"""API routes for team member management."""
+"""API routes for user management (users from GitHub OAuth)."""
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.schemas import TeamMemberCreate, TeamMemberOut, TeamMemberUpdate
+from src.api.schemas import UserOut, UserUpdate
 from src.db.engine import get_session
-from src.models.tables import TeamMember
+from src.models.tables import User
 
 router = APIRouter(prefix="/api/team", tags=["team"])
 
 
-@router.get("", response_model=list[TeamMemberOut])
-async def list_team(session: AsyncSession = Depends(get_session)) -> list[TeamMemberOut]:
-    """List all team members."""
-    members = (
-        (await session.execute(select(TeamMember).order_by(TeamMember.display_name)))
+@router.get("", response_model=list[UserOut])
+async def list_users(
+    session: AsyncSession = Depends(get_session),
+) -> list[UserOut]:
+    """List all users (created via GitHub OAuth login)."""
+    users = (
+        (await session.execute(select(User).order_by(User.login)))
         .scalars()
         .all()
     )
     return [
-        TeamMemberOut(
-            id=m.id,
-            display_name=m.display_name,
-            github_login=m.github_login,
-            email=m.email,
-            is_active=m.is_active,
-            created_at=m.created_at,
+        UserOut(
+            id=u.id,
+            login=u.login,
+            name=u.name,
+            avatar_url=u.avatar_url,
+            is_active=u.is_active,
+            created_at=u.created_at,
         )
-        for m in members
+        for u in users
     ]
 
 
-@router.post("", response_model=TeamMemberOut, status_code=201)
-async def add_member(
-    body: TeamMemberCreate, session: AsyncSession = Depends(get_session)
-) -> TeamMemberOut:
-    """Add a team member."""
-    member = TeamMember(
-        display_name=body.display_name,
-        github_login=body.github_login,
-        email=body.email,
-    )
-    session.add(member)
-    await session.commit()
-    await session.refresh(member)
-    return TeamMemberOut(
-        id=member.id,
-        display_name=member.display_name,
-        github_login=member.github_login,
-        email=member.email,
-        is_active=member.is_active,
-        created_at=member.created_at,
-    )
-
-
-@router.put("/{member_id}", response_model=TeamMemberOut)
-async def update_member(
-    member_id: int,
-    body: TeamMemberUpdate,
+@router.put("/{user_id}", response_model=UserOut)
+async def update_user(
+    user_id: int,
+    body: UserUpdate,
     session: AsyncSession = Depends(get_session),
-) -> TeamMemberOut:
-    """Update a team member."""
-    member = await session.get(TeamMember, member_id)
-    if not member:
-        raise HTTPException(status_code=404, detail="Team member not found")
+) -> UserOut:
+    """Update a user (toggle active status)."""
+    user = await session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
     for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(member, field, value)
+        setattr(user, field, value)
     await session.commit()
-    await session.refresh(member)
-    return TeamMemberOut(
-        id=member.id,
-        display_name=member.display_name,
-        github_login=member.github_login,
-        email=member.email,
-        is_active=member.is_active,
-        created_at=member.created_at,
+    await session.refresh(user)
+    return UserOut(
+        id=user.id,
+        login=user.login,
+        name=user.name,
+        avatar_url=user.avatar_url,
+        is_active=user.is_active,
+        created_at=user.created_at,
     )
-
-
-@router.delete("/{member_id}", status_code=204)
-async def deactivate_member(member_id: int, session: AsyncSession = Depends(get_session)) -> None:
-    """Deactivate a team member (soft-delete)."""
-    member = await session.get(TeamMember, member_id)
-    if not member:
-        raise HTTPException(status_code=404, detail="Team member not found")
-    member.is_active = False
-    await session.commit()

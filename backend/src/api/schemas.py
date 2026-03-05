@@ -40,6 +40,7 @@ class SpaceOut(BaseModel):
 class RepoCreate(BaseModel):
     owner: str = ""
     name: str
+    space_id: int | None = None
 
 
 class AvailableRepo(BaseModel):
@@ -75,6 +76,7 @@ class RepoDetail(BaseModel):
     default_branch: str
     last_synced_at: datetime | None
     created_at: datetime
+    space_id: int | None = None
 
 
 # ── Pull Requests ────────────────────────────────────────────
@@ -142,27 +144,18 @@ class StackOut(BaseModel):
     members: list[StackMemberOut] = []
 
 
-# ── Team ─────────────────────────────────────────────────────
+# ── Users (from GitHub OAuth) ────────────────────────────────
 
 
-class TeamMemberCreate(BaseModel):
-    display_name: str
-    github_login: str | None = None
-    email: str | None = None
-
-
-class TeamMemberUpdate(BaseModel):
-    display_name: str | None = None
-    github_login: str | None = None
-    email: str | None = None
+class UserUpdate(BaseModel):
     is_active: bool | None = None
 
 
-class TeamMemberOut(BaseModel):
+class UserOut(BaseModel):
     id: int
-    display_name: str
-    github_login: str | None
-    email: str | None
+    login: str
+    name: str | None
+    avatar_url: str | None
     is_active: bool
     created_at: datetime
 
@@ -171,7 +164,7 @@ class TeamMemberOut(BaseModel):
 
 
 class ProgressUpdate(BaseModel):
-    team_member_id: int
+    user_id: int
     reviewed: bool | None = None
     approved: bool | None = None
     notes: str | None = None
@@ -180,8 +173,8 @@ class ProgressUpdate(BaseModel):
 class ProgressOut(BaseModel):
     id: int
     pull_request_id: int
-    team_member_id: int
-    team_member_name: str = ""
+    user_id: int
+    user_name: str = ""
     reviewed: bool
     approved: bool
     notes: str | None

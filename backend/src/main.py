@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
+from src.api.accounts import router as accounts_router
 from src.api.auth import AuthMiddleware
 from src.api.auth import router as auth_router
 from src.api.events import router as events_router
@@ -63,6 +64,7 @@ app.add_middleware(
 
 # Register API routers
 app.include_router(auth_router)
+app.include_router(accounts_router)
 app.include_router(repos_router)
 app.include_router(spaces_router)
 app.include_router(pulls_router)

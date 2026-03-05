@@ -12,7 +12,7 @@
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
-  width: 520px;
+  width: 560px;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
@@ -54,65 +54,125 @@
 .hint {
   font-size: 0.75rem;
   color: var(--text-dim);
-  margin: 0 0 0.75rem 0;
+  margin: 0 0 1rem 0;
 }
 
-.empty {
-  font-size: 0.78rem;
-  color: var(--text-dim);
-  font-style: italic;
+/* Account section */
+.accountSection {
   margin-bottom: 1rem;
 }
 
-/* Space card */
-.card {
-  background: var(--bg-base);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  padding: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-.cardHeader {
+.accountHeader {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border-default);
 }
 
-.cardName {
-  font-weight: 600;
+.accountAvatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
+.accountLogin {
   font-size: 0.85rem;
+  font-weight: 600;
   color: var(--text-primary);
 }
 
-.cardSlug {
-  font-size: 0.75rem;
-  color: var(--text-muted);
+.accountBaseUrl {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  margin-left: auto;
 }
 
-.cardType {
-  font-size: 0.65rem;
-  padding: 1px 6px;
+.accountActions {
+  display: flex;
+  gap: 0.3rem;
+  margin-left: 0.5rem;
+}
+
+/* Space row */
+.spaceRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.15rem;
+}
+.spaceRow:hover {
+  background: var(--bg-elevated);
+}
+
+.spaceToggle {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.spaceToggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggleTrack {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.toggleTrack::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.spaceToggle input:checked + .toggleTrack {
+  background: var(--accent-green-bg);
+  border-color: var(--accent-green);
+}
+
+.spaceToggle input:checked + .toggleTrack::after {
+  transform: translateX(14px);
+  background: var(--accent-green);
+}
+
+.spaceName {
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.spaceType {
+  font-size: 0.6rem;
+  padding: 1px 5px;
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
   color: var(--text-dim);
   text-transform: uppercase;
 }
 
-.cardMeta {
-  display: flex;
-  gap: 1rem;
-  font-size: 0.72rem;
-  color: var(--text-dim);
-  margin-bottom: 0.5rem;
+.spaceInactive {
+  opacity: 0.5;
 }
 
-.cardActions {
-  display: flex;
-  gap: 0.4rem;
-}
-
+/* Action buttons */
 .actionBtn {
   font-size: 0.72rem;
   padding: 2px 8px;
@@ -137,17 +197,15 @@
   background: rgba(220, 50, 47, 0.1);
 }
 
-.testResult {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  margin-top: 0.4rem;
-  padding: 0.25rem 0.5rem;
-  background: var(--bg-elevated);
-  border-radius: var(--radius-sm);
+/* Link buttons container */
+.linkButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
 }
 
-/* Add button */
-.addBtn {
+.linkBtn {
   width: 100%;
   padding: 0.5rem;
   background: var(--bg-elevated);
@@ -157,15 +215,22 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.8rem;
-  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
 }
-.addBtn:hover {
+.linkBtn:hover:not(:disabled) {
   background: var(--border-default);
   color: var(--text-primary);
 }
+.linkBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
-/* Form */
-.form {
+/* Token link form */
+.tokenForm {
   background: var(--bg-base);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
@@ -173,45 +238,38 @@
   margin-top: 0.5rem;
 }
 
-.formTitle {
+.tokenFormTitle {
   font-size: 0.85rem;
-  margin: 0 0 0.5rem 0;
+  margin: 0 0 0.35rem 0;
   color: var(--accent-gold);
 }
 
-.formHint {
+.tokenFormHint {
   font-size: 0.72rem;
   color: var(--text-dim);
   margin: 0 0 0.5rem 0;
 }
 
-.formError {
+.tokenFormError {
   font-size: 0.75rem;
   color: var(--accent-red);
   margin-bottom: 0.5rem;
 }
 
-.fieldHint {
-  font-size: 0.65rem;
-  color: var(--text-dim);
-  font-weight: 400;
-}
-
-.formRow {
+.tokenFormRow {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
   margin-bottom: 0.5rem;
 }
 
-.formRow label {
+.tokenFormRow label {
   font-size: 0.72rem;
   color: var(--text-dim);
   font-weight: 600;
 }
 
-.formRow input,
-.formRow select {
+.tokenFormRow input {
   background: var(--bg-input);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
@@ -221,53 +279,41 @@
   font-family: inherit;
   outline: none;
 }
-.formRow input:focus,
-.formRow select:focus {
+.tokenFormRow input:focus {
   border-color: var(--accent-blue);
 }
 
-.oauthToggle {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  cursor: pointer;
-  margin-bottom: 0.25rem;
+.tokenFormFieldHint {
+  font-size: 0.65rem;
+  color: var(--text-dim);
 }
 
-.formActions {
+.tokenFormActions {
   display: flex;
   gap: 0.4rem;
   justify-content: flex-end;
   margin-top: 0.75rem;
 }
 
-.cancelBtn {
-  padding: 0.3rem 0.7rem;
-  background: none;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 0.78rem;
+/* Link button variants */
+.linkBtnSecondary {
+  border-style: dotted;
+  opacity: 0.8;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
-.saveBtn {
-  padding: 0.3rem 0.7rem;
-  background: var(--accent-green-bg);
-  color: var(--accent-teal);
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-family: inherit;
+.linkBtnHint {
+  font-size: 0.62rem;
+  color: var(--text-dim);
+  font-weight: normal;
+}
+
+/* Empty state */
+.empty {
   font-size: 0.78rem;
-}
-.saveBtn:hover:not(:disabled) {
-  background: var(--accent-green);
-  color: #fff;
-}
-.saveBtn:disabled {
-  opacity: 0.5;
+  color: var(--text-dim);
+  font-style: italic;
+  text-align: center;
+  padding: 1.5rem 0;
 }

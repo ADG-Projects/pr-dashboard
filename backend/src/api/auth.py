@@ -14,8 +14,9 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from src.api.schemas import AuthStatus, LoginRequest
 from src.config.settings import settings
 from src.db.engine import async_session_factory
-from src.models.tables import User
+from src.models.tables import GitHubAccount, User
 from src.services.crypto import encrypt_token
+from src.services.discovery import discover_spaces_for_account
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -46,9 +47,7 @@ GITHUB_COOKIE = "github_user"
 
 
 def _sign(payload: str) -> str:
-    sig = hmac.new(
-        settings.secret_key.encode(), payload.encode(), hashlib.sha256
-    ).hexdigest()
+    sig = hmac.new(settings.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return f"{payload}.{sig}"
 
 
@@ -56,9 +55,7 @@ def _verify(token: str) -> str | None:
     if "." not in token:
         return None
     payload, sig = token.rsplit(".", 1)
-    expected = hmac.new(
-        settings.secret_key.encode(), payload.encode(), hashlib.sha256
-    ).hexdigest()
+    expected = hmac.new(settings.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(sig, expected):
         return None
     return payload
@@ -151,9 +148,7 @@ async def logout(response: Response) -> AuthStatus:
     """Clear session cookie."""
     response.delete_cookie(COOKIE_NAME, path="/")
     response.delete_cookie(GITHUB_COOKIE, path="/")
-    return AuthStatus(
-        authenticated=False, auth_enabled=bool(settings.dashboard_password)
-    )
+    return AuthStatus(authenticated=False, auth_enabled=bool(settings.dashboard_password))
 
 
 # ── GitHub OAuth ────────────────────────────────────────────
@@ -164,33 +159,41 @@ GITHUB_USER_URL = "https://api.github.com/user"
 
 
 @router.get("/github")
-async def github_oauth_start(request: Request) -> RedirectResponse:
-    """Redirect to GitHub OAuth authorization page."""
+async def github_oauth_start(request: Request, link: bool = False) -> RedirectResponse:
+    """Redirect to GitHub OAuth authorization page.
+
+    Pass ?link=true to add a new GitHub account to the current user
+    instead of signing in as a different user.
+    """
     if not settings.github_oauth_client_id:
         return JSONResponse(  # type: ignore[return-value]
             status_code=400,
             content={"detail": "GitHub OAuth not configured"},
         )
+    # Encode link mode in the OAuth state so the callback knows
+    state_payload = "oauth_link" if link else "oauth"
     params = {
         "client_id": settings.github_oauth_client_id,
         "scope": "repo read:org",
-        "state": _sign("oauth"),
+        "state": _sign(state_payload),
     }
     from urllib.parse import urlencode
+
     url = f"{GITHUB_AUTHORIZE_URL}?{urlencode(params)}"
     return RedirectResponse(url=url)
 
 
 @router.get("/github/callback")
-async def github_oauth_callback(
-    code: str, state: str, request: Request
-) -> RedirectResponse:
-    """Exchange OAuth code for token, upsert user, set identity cookie."""
+async def github_oauth_callback(code: str, state: str, request: Request) -> RedirectResponse:
+    """Exchange OAuth code for token, upsert user + account, auto-discover spaces."""
     base = settings.frontend_url or ""
 
-    # Verify state
-    if _verify(state) != "oauth":
+    # Verify state — supports both "oauth" (sign-in) and "oauth_link" (link account)
+    state_payload = _verify(state)
+    if state_payload not in ("oauth", "oauth_link"):
         return RedirectResponse(url=f"{base}/?error=invalid_state")
+
+    link_mode = state_payload == "oauth_link"
 
     # Exchange code for access token
     async with httpx.AsyncClient() as client:
@@ -227,35 +230,78 @@ async def github_oauth_callback(
 
         gh_user = user_resp.json()
 
-    # Upsert user in DB
+    # Upsert user + github account in DB
     from datetime import UTC, datetime
 
-    async with async_session_factory() as session:
-        result = await session.execute(
-            select(User).where(User.github_id == gh_user["id"])
-        )
-        user = result.scalar_one_or_none()
+    encrypted = encrypt_token(access_token)
 
-        if user is None:
-            user = User(
+    async with async_session_factory() as session:
+        # In link mode, attach to the currently signed-in user
+        # In sign-in mode, create/find user from GitHub identity
+        existing_user_id = get_github_user_id(request) if link_mode else None
+
+        if existing_user_id and link_mode:
+            # Link mode: add this GitHub account to the existing user
+            user = await session.get(User, existing_user_id)
+            if not user:
+                return RedirectResponse(url=f"{base}/?error=user_not_found")
+        else:
+            # Sign-in mode: find/create user from GitHub identity
+            result = await session.execute(select(User).where(User.github_id == gh_user["id"]))
+            user = result.scalar_one_or_none()
+
+            if user is None:
+                user = User(
+                    github_id=gh_user["id"],
+                    login=gh_user["login"],
+                    name=gh_user.get("name"),
+                    avatar_url=gh_user.get("avatar_url"),
+                    last_login_at=datetime.now(UTC),
+                )
+                session.add(user)
+                await session.flush()
+            else:
+                user.login = gh_user["login"]
+                user.name = gh_user.get("name")
+                user.avatar_url = gh_user.get("avatar_url")
+                user.last_login_at = datetime.now(UTC)
+
+        # Upsert GitHubAccount (linked to the resolved user)
+        result = await session.execute(
+            select(GitHubAccount).where(
+                GitHubAccount.user_id == user.id,
+                GitHubAccount.github_id == gh_user["id"],
+            )
+        )
+        account = result.scalar_one_or_none()
+
+        if account is None:
+            account = GitHubAccount(
+                user_id=user.id,
                 github_id=gh_user["id"],
                 login=gh_user["login"],
-                name=gh_user.get("name"),
                 avatar_url=gh_user.get("avatar_url"),
-                encrypted_token=encrypt_token(access_token),
+                encrypted_token=encrypted,
+                base_url="https://api.github.com",
                 last_login_at=datetime.now(UTC),
             )
-            session.add(user)
+            session.add(account)
         else:
-            user.login = gh_user["login"]
-            user.name = gh_user.get("name")
-            user.avatar_url = gh_user.get("avatar_url")
-            user.encrypted_token = encrypt_token(access_token)
-            user.last_login_at = datetime.now(UTC)
+            account.login = gh_user["login"]
+            account.avatar_url = gh_user.get("avatar_url")
+            account.encrypted_token = encrypted
+            account.last_login_at = datetime.now(UTC)
 
         await session.commit()
         await session.refresh(user)
+        await session.refresh(account)
         user_id = user.id
+        account_id = account.id
+
+    # Auto-discover spaces (orgs + personal) in background
+    import asyncio
+
+    asyncio.create_task(_discover_spaces_background(account_id))
 
     # Set identity cookie
     expires = int(time.time()) + settings.session_max_age_seconds
@@ -275,6 +321,18 @@ async def github_oauth_callback(
         path="/",
     )
     return response
+
+
+async def _discover_spaces_background(account_id: int) -> None:
+    """Run space discovery in background after OAuth login."""
+    try:
+        async with async_session_factory() as session:
+            account = await session.get(GitHubAccount, account_id)
+            if account:
+                await discover_spaces_for_account(session, account)
+                await session.commit()
+    except Exception:
+        logger.exception(f"Failed to auto-discover spaces for account {account_id}")
 
 
 @router.get("/user")

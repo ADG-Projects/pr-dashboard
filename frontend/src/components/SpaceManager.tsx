@@ -1,11 +1,13 @@
-/** Modal for managing spaces (GitHub connections). */
+/** Modal for managing linked GitHub accounts and discovered spaces. */
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type Space } from '../api/client';
+import { api, type GitHubAccountInfo, type Space } from '../api/client';
 import { useCurrentUser } from '../App';
-import { Tooltip } from './Tooltip';
+import { GitHubIcon } from './GitHubIcon';
 import styles from './SpaceManager.module.css';
+
+const BASE = import.meta.env.DEV ? 'http://localhost:8000' : '';
 
 interface Props {
   onClose: () => void;
@@ -13,68 +15,146 @@ interface Props {
 
 export function SpaceManager({ onClose }: Props) {
   const qc = useQueryClient();
-  const { user } = useCurrentUser();
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const { user, oauthConfigured } = useCurrentUser();
+  const [showTokenForm, setShowTokenForm] = useState(false);
+
+  const { data: accounts } = useQuery({
+    queryKey: ['accounts'],
+    queryFn: api.listAccounts,
+    enabled: !!user,
+  });
 
   const { data: spaces } = useQuery({
     queryKey: ['spaces'],
     queryFn: api.listSpaces,
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.deleteSpace(id),
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
+      api.toggleSpace(id, isActive),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['spaces'] });
+      qc.invalidateQueries({ queryKey: ['repos'] });
+    },
+  });
+
+  const discoverMutation = useMutation({
+    mutationFn: (accountId: number) => api.discoverSpaces(accountId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['spaces'] }),
   });
 
-  const editingSpace = editingId ? spaces?.find((s) => s.id === editingId) : undefined;
+  const removeAccountMutation = useMutation({
+    mutationFn: (accountId: number) => api.removeAccount(accountId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['accounts'] });
+      qc.invalidateQueries({ queryKey: ['spaces'] });
+    },
+  });
+
+  // Group spaces by account
+  const spacesByAccount = new Map<number, Space[]>();
+  const orphanSpaces: Space[] = [];
+  for (const space of spaces ?? []) {
+    if (space.github_account_id) {
+      const list = spacesByAccount.get(space.github_account_id) ?? [];
+      list.push(space);
+      spacesByAccount.set(space.github_account_id, list);
+    } else {
+      orphanSpaces.push(space);
+    }
+  }
+
+  function handleSignIn() {
+    window.location.href = `${BASE}/api/auth/github`;
+  }
+
+  function handleLinkOAuth() {
+    // link=true tells the backend to attach this GitHub account
+    // to the current user instead of signing in as a new user
+    window.location.href = `${BASE}/api/auth/github?link=true`;
+  }
 
   return (
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
-          <h2>Spaces</h2>
+          <h2>GitHub Accounts</h2>
           <button onClick={onClose} className={styles.closeBtn}>x</button>
         </div>
         <div className={styles.body}>
           <p className={styles.hint}>
-            Each space connects to a GitHub org or user account. You can track repos from
-            multiple sources — e.g. a work org, a personal account, and a side project org —
-            each with its own access token.
+            Each GitHub account you link is scanned for organizations and personal repos.
+            Toggle an org/user <strong>on</strong> to start tracking its repositories on the dashboard.
           </p>
 
-          {spaces?.length === 0 && !showForm && (
-            <div className={styles.empty}>No spaces yet. Create one to get started.</div>
-          )}
-
-          {spaces?.map((space) => (
-            <SpaceCard
-              key={space.id}
-              space={space}
-              onEdit={() => { setEditingId(space.id); setShowForm(true); }}
-              onDelete={() => {
-                if (window.confirm(`Delete space "${space.name}"?`)) {
-                  deleteMutation.mutate(space.id);
+          {accounts?.map((account) => (
+            <AccountSection
+              key={account.id}
+              account={account}
+              spaces={spacesByAccount.get(account.id) ?? []}
+              onToggleSpace={(id, active) => toggleMutation.mutate({ id, isActive: active })}
+              onDiscover={() => discoverMutation.mutate(account.id)}
+              onRemove={() => {
+                if (window.confirm(`Unlink ${account.login}?`)) {
+                  removeAccountMutation.mutate(account.id);
                 }
               }}
+
+              isDiscovering={discoverMutation.isPending}
             />
           ))}
 
-          {showForm ? (
-            <SpaceForm
-              existing={editingSpace}
-              hasOAuth={!!user}
-              onSaved={() => {
-                setShowForm(false);
-                setEditingId(null);
+          {orphanSpaces.length > 0 && (
+            <div className={styles.accountSection}>
+              <div className={styles.accountHeader}>
+                <span className={styles.accountLogin}>Legacy spaces</span>
+              </div>
+              {orphanSpaces.map((space) => (
+                <SpaceRow
+                  key={space.id}
+                  space={space}
+                  onToggle={(active) => toggleMutation.mutate({ id: space.id, isActive: active })}
+                />
+              ))}
+            </div>
+          )}
+
+          {(!accounts || accounts.length === 0) && !user && (
+            <div className={styles.empty}>
+              Sign in with GitHub to get started.
+            </div>
+          )}
+
+          {showTokenForm ? (
+            <TokenLinkForm
+              onLinked={() => {
+                setShowTokenForm(false);
+                qc.invalidateQueries({ queryKey: ['accounts'] });
                 qc.invalidateQueries({ queryKey: ['spaces'] });
               }}
-              onCancel={() => { setShowForm(false); setEditingId(null); }}
+              onCancel={() => setShowTokenForm(false)}
             />
           ) : (
-            <button className={styles.addBtn} onClick={() => setShowForm(true)}>
-              + Add space
-            </button>
+            <div className={styles.linkButtons}>
+              {oauthConfigured && !user && (
+                <button className={styles.linkBtn} onClick={handleSignIn}>
+                  <GitHubIcon size={16} />
+                  Sign in with GitHub
+                </button>
+              )}
+              {oauthConfigured && user && (
+                <button className={styles.linkBtn} onClick={handleLinkOAuth}>
+                  <GitHubIcon size={16} />
+                  Link another GitHub account
+                </button>
+              )}
+              {user && (
+                <button className={`${styles.linkBtn} ${styles.linkBtnSecondary}`} onClick={() => setShowTokenForm(true)}>
+                  + Link with Personal Access Token
+                  <span className={styles.linkBtnHint}>for GitHub Enterprise or fine-grained access</span>
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -82,163 +162,139 @@ export function SpaceManager({ onClose }: Props) {
   );
 }
 
-function SpaceCard({
-  space,
-  onEdit,
-  onDelete,
+function TokenLinkForm({
+  onLinked,
+  onCancel,
 }: {
-  space: Space;
-  onEdit: () => void;
-  onDelete: () => void;
+  onLinked: () => void;
+  onCancel: () => void;
 }) {
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<string | null>(null);
+  const [token, setToken] = useState('');
+  const [baseUrl, setBaseUrl] = useState('https://api.github.com');
+  const [error, setError] = useState('');
 
-  async function handleTest() {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const res = await api.checkSpaceConnectivity(space.id);
-      setTestResult(res.ok ? `Connected (${res.rate_remaining ?? '?'} requests remaining)` : `Failed: ${res.error}`);
-    } catch (e: unknown) {
-      setTestResult(`Error: ${e instanceof Error ? e.message : 'unknown'}`);
-    } finally {
-      setTesting(false);
-    }
-  }
+  const linkMutation = useMutation({
+    mutationFn: () => api.linkAccountWithToken(token, baseUrl),
+    onSuccess: onLinked,
+    onError: (e: Error) => setError(e.message),
+  });
 
   return (
-    <div className={styles.card}>
-      <div className={styles.cardHeader}>
-        <span className={styles.cardName}>{space.name}</span>
-        <span className={styles.cardSlug}>{space.slug}</span>
-        <span className={styles.cardType}>{space.space_type}</span>
+    <div className={styles.tokenForm}>
+      <h3 className={styles.tokenFormTitle}>Link account with token</h3>
+      <p className={styles.tokenFormHint}>
+        Paste a Personal Access Token (PAT) to link a different GitHub account
+        or a GitHub Enterprise instance.
+      </p>
+      {error && <div className={styles.tokenFormError}>{error}</div>}
+      <div className={styles.tokenFormRow}>
+        <label>Personal Access Token</label>
+        <input
+          type="password"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder="ghp_... or github_pat_..."
+          autoFocus
+        />
       </div>
-      <div className={styles.cardMeta}>
-        <span>{space.base_url}</span>
-        <span>{space.has_token ? 'Token set' : 'No token'}</span>
+      <div className={styles.tokenFormRow}>
+        <label>API base URL</label>
+        <input
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+        />
+        <span className={styles.tokenFormFieldHint}>
+          Leave as-is for github.com (including SSO/enterprise orgs).
+          Only change for self-hosted GitHub Enterprise Server (e.g. https://github.mycompany.com/api/v3).
+        </span>
       </div>
-      <div className={styles.cardActions}>
-        <Tooltip text="Test GitHub connectivity" position="top">
-          <button className={styles.actionBtn} onClick={handleTest} disabled={testing}>
-            {testing ? 'Testing...' : 'Test'}
-          </button>
-        </Tooltip>
-        <button className={styles.actionBtn} onClick={onEdit}>Edit</button>
-        <button className={`${styles.actionBtn} ${styles.deleteAction}`} onClick={onDelete}>Delete</button>
+      <div className={styles.tokenFormActions}>
+        <button className={styles.actionBtn} onClick={onCancel}>Cancel</button>
+        <button
+          className={styles.linkBtn}
+          disabled={!token.trim() || linkMutation.isPending}
+          onClick={() => linkMutation.mutate()}
+        >
+          {linkMutation.isPending ? 'Linking...' : 'Link account'}
+        </button>
       </div>
-      {testResult && <div className={styles.testResult}>{testResult}</div>}
     </div>
   );
 }
 
-function SpaceForm({
-  existing,
-  hasOAuth,
-  onSaved,
-  onCancel,
+function AccountSection({
+  account,
+  spaces,
+  onToggleSpace,
+  onDiscover,
+  onRemove,
+  isDiscovering,
 }: {
-  existing?: Space;
-  hasOAuth: boolean;
-  onSaved: () => void;
-  onCancel: () => void;
+  account: GitHubAccountInfo;
+  spaces: Space[];
+  onToggleSpace: (id: number, active: boolean) => void;
+  onDiscover: () => void;
+  onRemove: () => void;
+  isDiscovering: boolean;
 }) {
-  const [name, setName] = useState(existing?.name || '');
-  const [slug, setSlug] = useState(existing?.slug || '');
-  const [spaceType, setSpaceType] = useState(existing?.space_type || 'org');
-  const [baseUrl, setBaseUrl] = useState(existing?.base_url || 'https://api.github.com');
-  const [token, setToken] = useState('');
-  const [useOauth, setUseOauth] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim() || !slug.trim()) return;
-    setSaving(true);
-    setError('');
-    try {
-      const tokenValue = useOauth ? 'use_oauth' : token;
-      if (existing) {
-        await api.updateSpace(existing.id, {
-          name: name.trim(),
-          slug: slug.trim(),
-          space_type: spaceType,
-          base_url: baseUrl.trim(),
-          ...(tokenValue ? { token: tokenValue } : {}),
-        });
-      } else {
-        await api.createSpace({
-          name: name.trim(),
-          slug: slug.trim(),
-          space_type: spaceType,
-          base_url: baseUrl.trim(),
-          token: tokenValue,
-        });
-      }
-      onSaved();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to save');
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
-    <form className={styles.form} onSubmit={handleSubmit}>
-      <h3 className={styles.formTitle}>{existing ? 'Edit space' : 'New space'}</h3>
-      <p className={styles.formHint}>
-        {existing
-          ? 'Update this GitHub connection.'
-          : 'Connect a GitHub org or user account to start tracking its repos.'}
-      </p>
-      {error && <div className={styles.formError}>{error}</div>}
-      <div className={styles.formRow}>
-        <label>Display name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Work, Personal" />
-      </div>
-      <div className={styles.formRow}>
-        <label>GitHub org or username</label>
-        <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="e.g. kyndryl-agentic-ai" />
-      </div>
-      <div className={styles.formRow}>
-        <label>Account type</label>
-        <select value={spaceType} onChange={(e) => setSpaceType(e.target.value)}>
-          <option value="org">Organization</option>
-          <option value="user">Personal account</option>
-        </select>
-      </div>
-      <div className={styles.formRow}>
-        <label>API base URL</label>
-        <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
-        <span className={styles.fieldHint}>Change only for GitHub Enterprise Server</span>
-      </div>
-      <div className={styles.formRow}>
-        <label>Access token</label>
-        {hasOAuth && baseUrl === 'https://api.github.com' && (
-          <label className={styles.oauthToggle}>
-            <input type="checkbox" checked={useOauth} onChange={(e) => setUseOauth(e.target.checked)} />
-            Use my GitHub sign-in token
-          </label>
+    <div className={styles.accountSection}>
+      <div className={styles.accountHeader}>
+        {account.avatar_url && (
+          <img src={account.avatar_url} alt="" className={styles.accountAvatar} />
         )}
-        {!useOauth && (
-          <>
-            <input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder={existing ? '(unchanged)' : 'ghp_...'}
-            />
-            <span className={styles.fieldHint}>Fine-grained PAT with repo read access</span>
-          </>
+        <span className={styles.accountLogin}>{account.login}</span>
+        {account.base_url !== 'https://api.github.com' && (
+          <span className={styles.accountBaseUrl}>{account.base_url}</span>
         )}
+        <div className={styles.accountActions}>
+          <button
+            className={styles.actionBtn}
+            onClick={onDiscover}
+            disabled={isDiscovering}
+            title="Re-discover orgs"
+          >
+            {isDiscovering ? 'Discovering...' : 'Refresh'}
+          </button>
+          <button
+            className={`${styles.actionBtn} ${styles.deleteAction}`}
+            onClick={onRemove}
+            title="Unlink this account"
+          >
+            Unlink
+          </button>
+        </div>
       </div>
-      <div className={styles.formActions}>
-        <button type="button" className={styles.cancelBtn} onClick={onCancel}>Cancel</button>
-        <button type="submit" className={styles.saveBtn} disabled={saving || !name.trim() || !slug.trim()}>
-          {saving ? 'Saving...' : existing ? 'Save' : 'Create'}
-        </button>
-      </div>
-    </form>
+      {spaces.map((space) => (
+        <SpaceRow
+          key={space.id}
+          space={space}
+          onToggle={(active) => onToggleSpace(space.id, active)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function SpaceRow({
+  space,
+  onToggle,
+}: {
+  space: Space;
+  onToggle: (active: boolean) => void;
+}) {
+  return (
+    <div className={`${styles.spaceRow} ${!space.is_active ? styles.spaceInactive : ''}`}>
+      <label className={styles.spaceToggle}>
+        <input
+          type="checkbox"
+          checked={space.is_active}
+          onChange={(e) => onToggle(e.target.checked)}
+        />
+        <span className={styles.toggleTrack} />
+      </label>
+      <span className={styles.spaceName}>{space.name}</span>
+      <span className={styles.spaceType}>{space.space_type}</span>
+    </div>
   );
 }

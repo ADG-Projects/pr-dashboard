@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from src.api.schemas import RepoCreate, RepoDetail, RepoSummary
 from src.db.engine import get_session
@@ -56,9 +56,7 @@ async def list_repos(
             .distinct()
         )
         failing_count = (
-            await session.execute(
-                select(func.count()).select_from(failing_subq.subquery())
-            )
+            await session.execute(select(func.count()).select_from(failing_subq.subquery()))
         ).scalar_one()
 
         stale_cutoff = datetime.now(UTC) - timedelta(days=7)
@@ -73,11 +71,7 @@ async def list_repos(
         ).scalar_one()
 
         stack_count = (
-            await session.execute(
-                select(func.count(PRStack.id)).where(
-                    PRStack.repo_id == repo.id
-                )
-            )
+            await session.execute(select(func.count(PRStack.id)).where(PRStack.repo_id == repo.id))
         ).scalar_one()
 
         summaries.append(
@@ -102,26 +96,23 @@ async def list_repos(
 
 
 @router.post("", response_model=RepoDetail, status_code=201)
-async def add_repo(
-    body: RepoCreate, session: AsyncSession = Depends(get_session)
-) -> RepoDetail:
+async def add_repo(body: RepoCreate, session: AsyncSession = Depends(get_session)) -> RepoDetail:
     """Add a repo to track. Requires space_id to determine which token to use."""
     if not body.space_id:
-        raise HTTPException(
-            status_code=400, detail="space_id is required"
-        )
+        raise HTTPException(status_code=400, detail="space_id is required")
 
-    space = await session.get(Space, body.space_id)
-    if not space or not space.is_active:
+    result = await session.execute(
+        select(Space).options(selectinload(Space.github_account)).where(Space.id == body.space_id)
+    )
+    space = result.scalar_one_or_none()
+    if not space:
         raise HTTPException(status_code=404, detail="Space not found")
 
     owner = body.owner or space.slug
     full_name = f"{owner}/{body.name}"
 
     existing = (
-        await session.execute(
-            select(TrackedRepo).where(TrackedRepo.full_name == full_name)
-        )
+        await session.execute(select(TrackedRepo).where(TrackedRepo.full_name == full_name))
     ).scalar_one_or_none()
     if existing:
         if not existing.is_active:
@@ -140,19 +131,17 @@ async def add_repo(
                 created_at=existing.created_at,
                 space_id=existing.space_id,
             )
-        raise HTTPException(
-            status_code=409, detail=f"{full_name} is already tracked"
-        )
+        raise HTTPException(status_code=409, detail=f"{full_name} is already tracked")
 
-    # Validate repo exists on GitHub using space's token
-    token = decrypt_token(space.encrypted_token) if space.encrypted_token else ""
-    gh = GitHubClient(token=token, base_url=space.base_url)
+    # Validate repo exists on GitHub using the space's account token
+    account = space.github_account
+    token = decrypt_token(account.encrypted_token) if account and account.encrypted_token else ""
+    base_url = account.base_url if account else "https://api.github.com"
+    gh = GitHubClient(token=token, base_url=base_url)
     try:
         gh_repo = await gh.get_repo(owner, body.name)
     except Exception as exc:
-        raise HTTPException(
-            status_code=404, detail=f"GitHub repo {full_name} not found"
-        ) from exc
+        raise HTTPException(status_code=404, detail=f"GitHub repo {full_name} not found") from exc
     finally:
         await gh.close()
 
@@ -168,20 +157,23 @@ async def add_repo(
     await session.refresh(repo)
     logger.info(f"Now tracking {full_name}")
 
-    async def _background_sync(
-        repo_id: int, owner: str, name: str, space_id: int
-    ) -> None:
+    async def _background_sync(repo_id: int, owner: str, name: str, space_id: int) -> None:
         from src.services.sync_service import SyncService
 
         svc = SyncService()
-        # Get space's client
         from src.db.engine import async_session_factory
 
         async with async_session_factory() as s:
-            sp = await s.get(Space, space_id)
-            if sp and sp.encrypted_token:
-                t = decrypt_token(sp.encrypted_token)
-                client = GitHubClient(token=t, base_url=sp.base_url)
+            result = await s.execute(
+                select(Space)
+                .options(selectinload(Space.github_account))
+                .where(Space.id == space_id)
+            )
+            sp = result.scalar_one_or_none()
+            acct = sp.github_account if sp else None
+            if acct and acct.encrypted_token:
+                t = decrypt_token(acct.encrypted_token)
+                client = GitHubClient(token=t, base_url=acct.base_url)
             else:
                 client = GitHubClient()
         try:
@@ -191,9 +183,7 @@ async def add_repo(
         finally:
             await client.close()
 
-    asyncio.create_task(
-        _background_sync(repo.id, repo.owner, repo.name, body.space_id)
-    )
+    asyncio.create_task(_background_sync(repo.id, repo.owner, repo.name, body.space_id))
 
     return RepoDetail(
         id=repo.id,
@@ -209,9 +199,7 @@ async def add_repo(
 
 
 @router.delete("/{repo_id}", status_code=204)
-async def remove_repo(
-    repo_id: int, session: AsyncSession = Depends(get_session)
-) -> None:
+async def remove_repo(repo_id: int, session: AsyncSession = Depends(get_session)) -> None:
     """Stop tracking a repo (soft-delete)."""
     repo = await session.get(TrackedRepo, repo_id)
     if not repo:
@@ -221,13 +209,11 @@ async def remove_repo(
 
 
 @router.post("/{repo_id}/sync", status_code=202)
-async def force_sync(
-    repo_id: int, session: AsyncSession = Depends(get_session)
-) -> dict[str, str]:
+async def force_sync(repo_id: int, session: AsyncSession = Depends(get_session)) -> dict[str, str]:
     """Trigger an immediate sync for a repo."""
     result = await session.execute(
         select(TrackedRepo)
-        .options(joinedload(TrackedRepo.space))
+        .options(joinedload(TrackedRepo.space).selectinload(Space.github_account))
         .where(TrackedRepo.id == repo_id)
     )
     repo = result.scalar_one_or_none()
@@ -239,9 +225,10 @@ async def force_sync(
     svc = SyncService()
 
     gh: GitHubClient | None = None
-    if repo.space and repo.space.encrypted_token:
-        token = decrypt_token(repo.space.encrypted_token)
-        gh = GitHubClient(token=token, base_url=repo.space.base_url)
+    account = repo.space.github_account if repo.space else None
+    if account and account.encrypted_token:
+        token = decrypt_token(account.encrypted_token)
+        gh = GitHubClient(token=token, base_url=account.base_url)
 
     try:
         await svc.sync_repo(repo.id, repo.owner, repo.name, gh)

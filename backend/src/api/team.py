@@ -16,11 +16,7 @@ async def list_users(
     session: AsyncSession = Depends(get_session),
 ) -> list[UserOut]:
     """List all users (created via GitHub OAuth login)."""
-    users = (
-        (await session.execute(select(User).order_by(User.login)))
-        .scalars()
-        .all()
-    )
+    users = (await session.execute(select(User).order_by(User.login))).scalars().all()
     return [
         UserOut(
             id=u.id,

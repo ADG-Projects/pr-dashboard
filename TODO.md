@@ -1,6 +1,7 @@
 # PR Dashboard — TODO
 
 ## Completed
+- [x] Auto-discover spaces + multi-account support: GitHubAccount model, OAuth auto-discovers orgs/personal repos, toggle spaces on/off, link multiple GitHub accounts (personal + enterprise), no manual space creation (2026-03-05)
 - [x] Multi-space support with GitHub OAuth: spaces for multiple GitHub orgs/users, OAuth identity flow, per-space tokens with Fernet encryption, grouped OrgOverview, SpaceManager UI, User model replaces TeamMember (2026-03-05)
 - [x] User management & PR assignment: team management modal, per-PR assignee dropdown, assignee filter that dims non-matching cards, team progress checkboxes in detail panel (2026-03-05)
 - [x] Rebase detection from GitHub reviews: derive review/approval state from actual GitHub reviews, warn when PR is rebased after last approval by comparing review commit_id vs head_sha (2026-03-05)
@@ -31,4 +32,4 @@
 - [ ] Railway deployment config (Railpack)
 - [ ] Force-sync button feedback (loading spinner, toast)
 - [ ] Mobile responsive layout
-- [ ] GitHub Enterprise Server support (non-EMU, custom API base URL)
+- [ ] GitHub Enterprise Server OAuth flow (custom authorize/token URLs per base_url)

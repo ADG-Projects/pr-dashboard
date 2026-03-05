@@ -25,7 +25,6 @@ class User(Base):
     login: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str | None] = mapped_column(String(255))
     avatar_url: Mapped[str | None] = mapped_column(String(1024))
-    encrypted_token: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_login_at: Mapped[datetime] = mapped_column(
@@ -33,6 +32,30 @@ class User(Base):
     )
 
     progress: Mapped[list["UserProgress"]] = relationship(back_populates="user")
+    github_accounts: Mapped[list["GitHubAccount"]] = relationship(back_populates="user")
+
+
+class GitHubAccount(Base):
+    __tablename__ = "github_accounts"
+    __table_args__ = (UniqueConstraint("user_id", "github_id", name="uq_user_github_account"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    github_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    login: Mapped[str] = mapped_column(String(255), nullable=False)
+    avatar_url: Mapped[str | None] = mapped_column(String(1024))
+    encrypted_token: Mapped[str | None] = mapped_column(Text)
+    base_url: Mapped[str] = mapped_column(
+        String(1024), nullable=False, default="https://api.github.com"
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_login_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="github_accounts")
+    spaces: Mapped[list["Space"]] = relationship(back_populates="github_account")
 
 
 class Space(Base):
@@ -42,13 +65,13 @@ class Space(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), nullable=False)
     space_type: Mapped[str] = mapped_column(String(20), nullable=False)  # "org" or "user"
-    base_url: Mapped[str] = mapped_column(
-        String(1024), nullable=False, default="https://api.github.com"
+    github_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("github_accounts.id", ondelete="SET NULL"), nullable=True
     )
-    encrypted_token: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    github_account: Mapped["GitHubAccount | None"] = relationship(back_populates="spaces")
     repos: Mapped[list["TrackedRepo"]] = relationship(back_populates="space")
 
 
@@ -186,9 +209,7 @@ class PRStackMembership(Base):
 
 class UserProgress(Base):
     __tablename__ = "user_progress"
-    __table_args__ = (
-        UniqueConstraint("pull_request_id", "user_id", name="uq_pr_user_progress"),
-    )
+    __table_args__ = (UniqueConstraint("pull_request_id", "user_id", name="uq_pr_user_progress"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     pull_request_id: Mapped[int] = mapped_column(ForeignKey("pull_requests.id", ondelete="CASCADE"))

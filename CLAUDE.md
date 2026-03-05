@@ -33,8 +33,10 @@ For migrations: `cd backend && uv run alembic upgrade head`
 
 ### Key Design Decisions
 - **Two-layer auth**: password gate (HMAC cookie) + GitHub OAuth identity (separate cookie)
-- **Spaces**: each space = a GitHub connection (org or user) with encrypted token
-- Background sync loop runs per-space, creating GitHubClient from decrypted token + base_url
+- **Multi-account**: Users can link multiple GitHub accounts (GitHubAccount model), each with its own token + base_url (supports GitHub.com + GHE)
+- **Auto-discovery**: On OAuth login, the app calls `/user/orgs` + `/user` to auto-create Space rows for each org and the personal account
+- **Spaces**: each space = a discovered org or personal account, linked to a GitHubAccount for its token. Users toggle spaces on/off to control which orgs are synced.
+- Background sync loop runs per-active-space, getting token from `space.github_account`
 - Stack detection via BFS on `head_ref`/`base_ref` relationships between open PRs
 - SSE broadcasts progress updates and sync completions to connected clients
 - Token encryption via Fernet (key derived from SECRET_KEY)
@@ -45,11 +47,11 @@ For migrations: `cd backend && uv run alembic upgrade head`
 ```
 backend/
   src/
-    api/          # FastAPI routes (repos, spaces, pulls, stacks, team, progress, auth, events)
+    api/          # FastAPI routes (accounts, repos, spaces, pulls, stacks, team, progress, auth, events)
     config/       # Pydantic settings
     db/           # SQLAlchemy engine + base
-    models/       # ORM models (tables.py) — User, Space, TrackedRepo, PullRequest, etc.
-    services/     # GitHub client, sync service, stack detector, SSE events, crypto
+    models/       # ORM models (tables.py) — User, GitHubAccount, Space, TrackedRepo, PullRequest, etc.
+    services/     # GitHub client, sync service, stack detector, SSE events, crypto, discovery
   alembic/        # Database migrations
 frontend/
   src/

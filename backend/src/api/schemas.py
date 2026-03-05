@@ -7,20 +7,8 @@ from pydantic import BaseModel
 # ── Spaces ───────────────────────────────────────────────────
 
 
-class SpaceCreate(BaseModel):
-    name: str
-    slug: str
-    space_type: str = "org"  # "org" or "user"
-    base_url: str = "https://api.github.com"
-    token: str = ""  # PAT or "use_oauth"
-
-
-class SpaceUpdate(BaseModel):
-    name: str | None = None
-    slug: str | None = None
-    space_type: str | None = None
-    base_url: str | None = None
-    token: str | None = None
+class SpaceToggle(BaseModel):
+    is_active: bool
 
 
 class SpaceOut(BaseModel):
@@ -32,6 +20,29 @@ class SpaceOut(BaseModel):
     is_active: bool
     has_token: bool
     created_at: datetime
+    github_account_id: int | None = None
+    github_account_login: str | None = None
+
+
+class GitHubAccountCreate(BaseModel):
+    token: str
+    base_url: str = "https://api.github.com"
+
+
+class AddSpaceRequest(BaseModel):
+    slug: str  # org login or username
+    space_type: str = "org"  # "org" or "user"
+    name: str | None = None  # display name, defaults to slug
+
+
+class GitHubAccountOut(BaseModel):
+    id: int
+    login: str
+    avatar_url: str | None
+    base_url: str
+    has_token: bool
+    created_at: datetime
+    last_login_at: datetime
 
 
 # ── Repos ────────────────────────────────────────────────────
@@ -191,7 +202,6 @@ class QualitySnapshotOut(BaseModel):
 
 class AssigneeUpdate(BaseModel):
     assignee_id: int | None = None
-
 
 
 # ── Auth ─────────────────────────────────────────────────────

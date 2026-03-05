@@ -23,9 +23,7 @@ async def get_progress(
 
     results = (
         await session.execute(
-            select(UserProgress, User)
-            .join(User)
-            .where(UserProgress.pull_request_id == pr_id)
+            select(UserProgress, User).join(User).where(UserProgress.pull_request_id == pr_id)
         )
     ).all()
 

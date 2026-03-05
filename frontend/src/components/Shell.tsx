@@ -19,7 +19,21 @@ export function Shell() {
   const isHome = location.pathname === '/';
   const [showTeam, setShowTeam] = useState(false);
   const [showSpaces, setShowSpaces] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const { user, setUser, oauthConfigured } = useCurrentUser();
+
+  // Close user menu on outside click
+  useEffect(() => {
+    if (!showUserMenu) return;
+    function handleClick(e: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showUserMenu]);
 
   useEffect(() => {
     const handler = () => setShowSpaces(true);
@@ -54,14 +68,28 @@ export function Shell() {
         <div className={styles.spacer} />
         <div className={styles.userArea}>
           {user ? (
-            <Tooltip text={`Signed in as ${user.login}. Click to disconnect.`} position="bottom">
-              <button className={styles.userBtn} onClick={handleDisconnect}>
+            <div className={styles.userMenuWrapper} ref={userMenuRef}>
+              <button className={styles.userBtn} onClick={() => setShowUserMenu(v => !v)}>
                 {user.avatar_url && (
                   <img src={user.avatar_url} alt="" className={styles.avatar} />
                 )}
                 <span className={styles.userName}>{user.name || user.login}</span>
+                <span className={styles.chevron}>&#9662;</span>
               </button>
-            </Tooltip>
+              {showUserMenu && (
+                <div className={styles.userMenu}>
+                  <div className={styles.userMenuInfo}>
+                    Signed in as <strong>{user.login}</strong>
+                  </div>
+                  <button
+                    className={styles.userMenuItem}
+                    onClick={() => { setShowUserMenu(false); handleDisconnect(); }}
+                  >
+                    Disconnect GitHub
+                  </button>
+                </div>
+              )}
+            </div>
           ) : oauthConfigured ? (
             <Tooltip text="Sign in to link your identity for assignments, avatars, and optional token sharing with spaces" position="bottom">
               <button className={styles.githubBtn} onClick={handleConnectGitHub}>

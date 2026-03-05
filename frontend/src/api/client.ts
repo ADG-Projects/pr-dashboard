@@ -33,6 +33,18 @@ export interface Space {
   is_active: boolean;
   has_token: boolean;
   created_at: string;
+  github_account_id: number | null;
+  github_account_login: string | null;
+}
+
+export interface GitHubAccountInfo {
+  id: number;
+  login: string;
+  avatar_url: string | null;
+  base_url: string;
+  has_token: boolean;
+  created_at: string;
+  last_login_at: string;
 }
 
 export interface RepoSummary {
@@ -147,32 +159,35 @@ export interface AuthStatus {
 // ── API functions ────────────────────────────────
 
 export const api = {
+  // Accounts
+  listAccounts: () => request<GitHubAccountInfo[]>('/api/accounts'),
+  linkAccountWithToken: (token: string, baseUrl?: string) =>
+    request<GitHubAccountInfo>('/api/accounts', {
+      method: 'POST',
+      body: JSON.stringify({ token, base_url: baseUrl || 'https://api.github.com' }),
+    }),
+  discoverSpaces: (accountId: number) =>
+    request<{ discovered: number; spaces: { id: number; slug: string; space_type: string }[] }>(
+      `/api/accounts/${accountId}/discover`,
+      { method: 'POST' },
+    ),
+  addSpaceToAccount: (accountId: number, slug: string, spaceType: string = 'org', name?: string) =>
+    request<{ id: number; slug: string; already_exists: boolean }>(
+      `/api/accounts/${accountId}/spaces`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ slug, space_type: spaceType, name }),
+      },
+    ),
+  removeAccount: (accountId: number) =>
+    request<void>(`/api/accounts/${accountId}`, { method: 'DELETE' }),
+
   // Spaces
   listSpaces: () => request<Space[]>('/api/spaces'),
-  createSpace: (data: {
-    name: string;
-    slug: string;
-    space_type: string;
-    base_url?: string;
-    token?: string;
-  }) =>
-    request<Space>('/api/spaces', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-  updateSpace: (
-    id: number,
-    data: {
-      name?: string;
-      slug?: string;
-      space_type?: string;
-      base_url?: string;
-      token?: string;
-    },
-  ) =>
-    request<Space>(`/api/spaces/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
+  toggleSpace: (id: number, isActive: boolean) =>
+    request<Space>(`/api/spaces/${id}/toggle`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active: isActive }),
     }),
   deleteSpace: (id: number) =>
     request<void>(`/api/spaces/${id}`, { method: 'DELETE' }),

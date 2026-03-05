@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.db.engine import async_session_factory
 from src.models.tables import CheckRun, PullRequest, Review, Space, TrackedRepo
@@ -54,7 +55,9 @@ class SyncService:
             spaces = (
                 (
                     await session.execute(
-                        select(Space).where(Space.is_active.is_(True))
+                        select(Space)
+                        .options(selectinload(Space.github_account))
+                        .where(Space.is_active.is_(True))
                     )
                 )
                 .scalars()
@@ -62,27 +65,30 @@ class SyncService:
             )
 
         for space in spaces:
-            if not space.encrypted_token:
-                logger.warning(f"Space '{space.name}' has no token, skipping")
+            account = space.github_account
+            if not account or not account.encrypted_token:
+                logger.warning(f"Space '{space.name}' has no linked account/token, skipping")
                 continue
-            token = decrypt_token(space.encrypted_token)
-            gh = GitHubClient(token=token, base_url=space.base_url)
+            token = decrypt_token(account.encrypted_token)
+            gh = GitHubClient(token=token, base_url=account.base_url)
             try:
                 async with async_session_factory() as session:
                     repos = (
-                        await session.execute(
-                            select(TrackedRepo).where(
-                                TrackedRepo.is_active.is_(True),
-                                TrackedRepo.space_id == space.id,
+                        (
+                            await session.execute(
+                                select(TrackedRepo).where(
+                                    TrackedRepo.is_active.is_(True),
+                                    TrackedRepo.space_id == space.id,
+                                )
                             )
                         )
-                    ).scalars().all()
+                        .scalars()
+                        .all()
+                    )
 
                 for repo in repos:
                     try:
-                        await self.sync_repo(
-                            repo.id, repo.owner, repo.name, gh
-                        )
+                        await self.sync_repo(repo.id, repo.owner, repo.name, gh)
                     except Exception:
                         logger.exception(f"Failed to sync {repo.full_name}")
             finally:
@@ -91,13 +97,17 @@ class SyncService:
         # Also sync repos without a space (legacy, using fallback token)
         async with async_session_factory() as session:
             orphan_repos = (
-                await session.execute(
-                    select(TrackedRepo).where(
-                        TrackedRepo.is_active.is_(True),
-                        TrackedRepo.space_id.is_(None),
+                (
+                    await session.execute(
+                        select(TrackedRepo).where(
+                            TrackedRepo.is_active.is_(True),
+                            TrackedRepo.space_id.is_(None),
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
         if orphan_repos:
             from src.config.settings import settings
@@ -107,13 +117,9 @@ class SyncService:
                 try:
                     for repo in orphan_repos:
                         try:
-                            await self.sync_repo(
-                                repo.id, repo.owner, repo.name, gh
-                            )
+                            await self.sync_repo(repo.id, repo.owner, repo.name, gh)
                         except Exception:
-                            logger.exception(
-                                f"Failed to sync {repo.full_name}"
-                            )
+                            logger.exception(f"Failed to sync {repo.full_name}")
                 finally:
                     await gh.close()
 
@@ -145,22 +151,16 @@ class SyncService:
                     pr = await self._upsert_pr(session, repo_id, gh_pr)
 
                     try:
-                        detail = await github.get_pull(
-                            owner, name, gh_pr["number"]
-                        )
+                        detail = await github.get_pull(owner, name, gh_pr["number"])
                         pr.additions = detail.get("additions", 0)
                         pr.deletions = detail.get("deletions", 0)
                         pr.changed_files = detail.get("changed_files", 0)
                         pr.mergeable_state = detail.get("mergeable_state")
                     except Exception as exc:
-                        logger.warning(
-                            f"  Could not fetch detail for PR #{gh_pr['number']}: {exc}"
-                        )
+                        logger.warning(f"  Could not fetch detail for PR #{gh_pr['number']}: {exc}")
 
                     try:
-                        runs = await github.get_workflow_runs(
-                            owner, name, gh_pr["head"]["sha"]
-                        )
+                        runs = await github.get_workflow_runs(owner, name, gh_pr["head"]["sha"])
                         checks = [
                             {
                                 "name": r["name"],
@@ -177,9 +177,7 @@ class SyncService:
                         )
 
                     try:
-                        reviews = await github.get_reviews(
-                            owner, name, gh_pr["number"]
-                        )
+                        reviews = await github.get_reviews(owner, name, gh_pr["number"])
                         await self._upsert_reviews(session, pr.id, reviews)
                     except Exception as exc:
                         logger.warning(
@@ -196,9 +194,7 @@ class SyncService:
                 stacks = await detect_stacks(session, repo_id)
                 await session.commit()
                 if stacks:
-                    logger.info(
-                        f"  Detected {len(stacks)} stack(s) for {owner}/{name}"
-                    )
+                    logger.info(f"  Detected {len(stacks)} stack(s) for {owner}/{name}")
 
             await broadcast_event(
                 "sync_complete",
@@ -209,9 +205,7 @@ class SyncService:
             if close_after:
                 await github.close()
 
-    async def _upsert_pr(
-        self, session: AsyncSession, repo_id: int, gh_pr: dict
-    ) -> PullRequest:
+    async def _upsert_pr(self, session: AsyncSession, repo_id: int, gh_pr: dict) -> PullRequest:
         """Insert or update a pull request from GitHub data."""
         result = await session.execute(
             select(PullRequest).where(
@@ -262,11 +256,7 @@ class SyncService:
     ) -> None:
         """Replace check runs for a PR."""
         existing = (
-            (
-                await session.execute(
-                    select(CheckRun).where(CheckRun.pull_request_id == pr_id)
-                )
-            )
+            (await session.execute(select(CheckRun).where(CheckRun.pull_request_id == pr_id)))
             .scalars()
             .all()
         )
@@ -286,16 +276,10 @@ class SyncService:
                 )
             )
 
-    async def _upsert_reviews(
-        self, session: AsyncSession, pr_id: int, reviews: list[dict]
-    ) -> None:
+    async def _upsert_reviews(self, session: AsyncSession, pr_id: int, reviews: list[dict]) -> None:
         """Replace reviews for a PR."""
         existing = (
-            (
-                await session.execute(
-                    select(Review).where(Review.pull_request_id == pr_id)
-                )
-            )
+            (await session.execute(select(Review).where(Review.pull_request_id == pr_id)))
             .scalars()
             .all()
         )

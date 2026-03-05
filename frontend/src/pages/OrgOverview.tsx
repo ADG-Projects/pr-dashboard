@@ -160,12 +160,14 @@ export function OrgOverview() {
       bySpace.get(key)!.push(repo);
     }
 
-    // Spaces first (in order), then unassigned
+    // Active spaces first (in order), then unassigned
     for (const space of spaces || []) {
-      const spaceRepos = bySpace.get(space.id);
-      if (spaceRepos || true) {
-        groups.push({ space, repos: spaceRepos || [] });
+      if (!space.is_active) {
+        bySpace.delete(space.id);
+        continue;
       }
+      const spaceRepos = bySpace.get(space.id);
+      groups.push({ space, repos: spaceRepos || [] });
       bySpace.delete(space.id);
     }
     const unassigned = bySpace.get(null);
@@ -178,7 +180,7 @@ export function OrgOverview() {
 
   if (reposLoading) return <div className={styles.loading}>Loading repos...</div>;
 
-  const hasSpaces = spaces && spaces.length > 0;
+  const hasSpaces = spaces && spaces.some((s) => s.is_active);
 
   return (
     <div>
@@ -199,7 +201,7 @@ export function OrgOverview() {
                 <div className={styles.stepContent}>
                   <strong>Sign in with GitHub</strong>
                   <span className={styles.stepDesc}>
-                    Links your identity for avatars, assignments, and optional token sharing.
+                    Your orgs and personal account are auto-discovered. Link multiple accounts for work + personal.
                   </span>
                   {!user && (
                     <button
@@ -216,9 +218,9 @@ export function OrgOverview() {
             <div className={styles.step}>
               <span className={styles.stepNum}>{oauthConfigured ? '2' : '1'}</span>
               <div className={styles.stepContent}>
-                <strong>Create a space</strong>
+                <strong>Enable spaces</strong>
                 <span className={styles.stepDesc}>
-                  A space connects to a GitHub org or user account with its own access token.
+                  Toggle on the orgs you want to track. Open Spaces to see your discovered accounts.
                 </span>
                 <button
                   className={styles.stepBtn}
@@ -234,7 +236,6 @@ export function OrgOverview() {
                 <strong>Track repos</strong>
                 <span className={styles.stepDesc}>
                   Pick which repos to monitor. PRs, CI status, and stacks sync automatically.
-                  You can add repos after creating a space.
                 </span>
               </div>
             </div>

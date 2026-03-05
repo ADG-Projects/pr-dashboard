@@ -6,7 +6,7 @@ import time
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from src.api.schemas import AuthStatus, LoginRequest
 from src.config.settings import settings
@@ -15,16 +15,18 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # Paths that don't require authentication
 PUBLIC_PATHS = {"/api/auth/login", "/api/auth/me", "/api/health"}
+PUBLIC_PREFIXES = ("/api/events",)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
     """Block unauthenticated requests to /api/* routes (except public paths)."""
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
         path = request.url.path
         if (
             path.startswith("/api/")
             and path not in PUBLIC_PATHS
+            and not path.startswith(PUBLIC_PREFIXES)
             and not is_authenticated(request)
         ):
             return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
@@ -87,7 +89,9 @@ async def login(body: LoginRequest, response: Response) -> AuthStatus:
         token,
         max_age=settings.session_max_age_seconds,
         httponly=True,
+        secure=True,
         samesite="lax",
+        path="/",
     )
     return AuthStatus(authenticated=True, auth_enabled=True)
 
@@ -104,5 +108,5 @@ async def auth_status(request: Request) -> AuthStatus:
 @router.post("/logout")
 async def logout(response: Response) -> AuthStatus:
     """Clear session cookie."""
-    response.delete_cookie(COOKIE_NAME)
+    response.delete_cookie(COOKIE_NAME, path="/")
     return AuthStatus(authenticated=False, auth_enabled=bool(settings.dashboard_password))

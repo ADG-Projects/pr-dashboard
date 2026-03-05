@@ -10,7 +10,8 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
-from src.api.auth import AuthMiddleware, router as auth_router
+from src.api.auth import AuthMiddleware
+from src.api.auth import router as auth_router
 from src.api.events import router as events_router
 from src.api.progress import router as progress_router
 from src.api.pulls import router as pulls_router
@@ -46,8 +47,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Auth middleware — must be added before CORS so it runs after CORS
-app.add_middleware(AuthMiddleware)
+# Auth middleware — only active when DASHBOARD_PASSWORD is set
+if settings.dashboard_password:
+    app.add_middleware(AuthMiddleware)
 
 # CORS for local development (Vite dev server on :5173)
 app.add_middleware(

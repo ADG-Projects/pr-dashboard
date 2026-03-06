@@ -129,6 +129,32 @@ async def add_repo(
     owner = body.owner or space.slug
     full_name = f"{owner}/{body.name}"
 
+    async def _background_sync(repo_id: int, owner: str, name: str, space_id: int) -> None:
+        from src.services.sync_service import SyncService
+
+        svc = SyncService()
+        from src.db.engine import async_session_factory
+
+        async with async_session_factory() as s:
+            result = await s.execute(
+                select(Space)
+                .options(selectinload(Space.github_account))
+                .where(Space.id == space_id)
+            )
+            sp = result.scalar_one_or_none()
+            acct = sp.github_account if sp else None
+            if acct and acct.encrypted_token:
+                t = decrypt_token(acct.encrypted_token)
+                client = GitHubClient(token=t, base_url=acct.base_url)
+            else:
+                client = GitHubClient()
+        try:
+            await svc.sync_repo(repo_id, owner, name, client)
+        except Exception:
+            logger.exception(f"Background sync failed for {owner}/{name}")
+        finally:
+            await client.close()
+
     existing = (
         await session.execute(select(TrackedRepo).where(TrackedRepo.full_name == full_name))
     ).scalar_one_or_none()
@@ -139,8 +165,12 @@ async def add_repo(
             existing.visibility = "private"
             existing.space_id = body.space_id
             existing.user_id = repo_user_id
+            existing.last_synced_at = None
             await session.commit()
             await session.refresh(existing)
+            asyncio.create_task(
+                _background_sync(existing.id, existing.owner, existing.name, body.space_id)
+            )
             return RepoDetail(
                 id=existing.id,
                 owner=existing.owner,
@@ -180,32 +210,6 @@ async def add_repo(
     await session.commit()
     await session.refresh(repo)
     logger.info(f"Now tracking {full_name}")
-
-    async def _background_sync(repo_id: int, owner: str, name: str, space_id: int) -> None:
-        from src.services.sync_service import SyncService
-
-        svc = SyncService()
-        from src.db.engine import async_session_factory
-
-        async with async_session_factory() as s:
-            result = await s.execute(
-                select(Space)
-                .options(selectinload(Space.github_account))
-                .where(Space.id == space_id)
-            )
-            sp = result.scalar_one_or_none()
-            acct = sp.github_account if sp else None
-            if acct and acct.encrypted_token:
-                t = decrypt_token(acct.encrypted_token)
-                client = GitHubClient(token=t, base_url=acct.base_url)
-            else:
-                client = GitHubClient()
-        try:
-            await svc.sync_repo(repo_id, owner, name, client)
-        except Exception:
-            logger.exception(f"Background sync failed for {owner}/{name}")
-        finally:
-            await client.close()
 
     asyncio.create_task(_background_sync(repo.id, repo.owner, repo.name, body.space_id))
 

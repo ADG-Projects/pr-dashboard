@@ -387,12 +387,17 @@ export function OrgOverview() {
                     </div>
                   </Tooltip>
                 </div>
-                {repo.last_synced_at && (
+                {repo.last_synced_at ? (
                   <Tooltip text="Last sync with GitHub API" position="top">
                     <div className={styles.synced}>
                       Synced {new Date(repo.last_synced_at).toLocaleTimeString()}
                     </div>
                   </Tooltip>
+                ) : (
+                  <div className={styles.syncingLabel}>
+                    <span className={styles.syncSpinner} />
+                    Syncing...
+                  </div>
                 )}
               </Link>
             ))}

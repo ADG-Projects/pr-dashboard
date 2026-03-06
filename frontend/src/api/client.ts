@@ -12,6 +12,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body = await resp.json().catch(() => ({ detail: resp.statusText }));
     throw new Error(body.detail || `HTTP ${resp.status}`);
   }
+  if (resp.status === 204 || resp.headers.get('content-length') === '0') {
+    return undefined as T;
+  }
   return resp.json();
 }
 

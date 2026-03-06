@@ -54,8 +54,16 @@ export default function App() {
 
   if (!authChecked) return null;
 
+  async function handleLogin() {
+    const resp = await fetch('/api/auth/me', { credentials: 'include' });
+    const data = await resp.json();
+    setAuthenticated(data.authenticated);
+    setOauthConfigured(data.oauth_configured ?? false);
+    if (data.user) setUser(data.user);
+  }
+
   if (authEnabled && !authenticated) {
-    return <Login onLogin={() => setAuthenticated(true)} />;
+    return <Login onLogin={handleLogin} />;
   }
 
   return (

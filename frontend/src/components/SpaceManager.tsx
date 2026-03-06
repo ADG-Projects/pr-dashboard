@@ -7,8 +7,6 @@ import { useCurrentUser } from '../App';
 import { GitHubIcon } from './GitHubIcon';
 import styles from './SpaceManager.module.css';
 
-const BASE = import.meta.env.DEV ? 'http://localhost:8000' : '';
-
 interface Props {
   onClose: () => void;
 }
@@ -65,13 +63,13 @@ export function SpaceManager({ onClose }: Props) {
   }
 
   function handleSignIn() {
-    window.location.href = `${BASE}/api/auth/github`;
+    window.location.href = '/api/auth/github';
   }
 
   function handleLinkOAuth() {
     // link=true tells the backend to attach this GitHub account
     // to the current user instead of signing in as a new user
-    window.location.href = `${BASE}/api/auth/github?link=true`;
+    window.location.href = '/api/auth/github?link=true';
   }
 
   return (

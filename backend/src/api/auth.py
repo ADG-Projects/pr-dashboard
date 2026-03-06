@@ -108,12 +108,13 @@ async def login(body: LoginRequest, response: Response) -> AuthStatus:
 
     expires = int(time.time()) + settings.session_max_age_seconds
     token = _sign(str(expires))
+    is_https = not settings.frontend_url or settings.frontend_url.startswith("https")
     response.set_cookie(
         COOKIE_NAME,
         token,
         max_age=settings.session_max_age_seconds,
         httponly=True,
-        secure=True,
+        secure=is_https,
         samesite="lax",
         path="/",
     )

@@ -12,8 +12,6 @@ import { Tooltip } from './Tooltip';
 import { GitHubIcon } from './GitHubIcon';
 import styles from './Shell.module.css';
 
-const BASE = import.meta.env.DEV ? 'http://localhost:8000' : '';
-
 export function Shell() {
   const location = useLocation();
   useSSE();
@@ -43,7 +41,7 @@ export function Shell() {
   }, []);
 
   function handleConnectGitHub() {
-    window.location.href = `${BASE}/api/auth/github`;
+    window.location.href = '/api/auth/github';
   }
 
   const { data: accounts } = useQuery({
@@ -60,7 +58,7 @@ export function Shell() {
 
   function handleLinkOAuth() {
     setShowUserMenu(false);
-    window.location.href = `${BASE}/api/auth/github?link=true`;
+    window.location.href = '/api/auth/github?link=true';
   }
 
   return (

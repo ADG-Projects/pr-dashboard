@@ -1,6 +1,6 @@
 /** API client for the PR Dashboard backend. */
 
-const BASE = import.meta.env.DEV ? 'http://localhost:8000' : '';
+const BASE = '';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(`${BASE}${path}`, {

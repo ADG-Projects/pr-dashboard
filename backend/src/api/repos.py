@@ -136,6 +136,7 @@ async def add_repo(
     if existing:
         if not existing.is_active:
             existing.is_active = True
+            existing.visibility = "private"
             existing.space_id = body.space_id
             existing.user_id = repo_user_id
             await session.commit()

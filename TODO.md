@@ -1,6 +1,8 @@
 # PR Dashboard — TODO
 
 ## Completed
+- [x] Per-repo visibility (private/shared): visibility moved from spaces to individual repos, each user only sees their own repos unless explicitly shared; spaces simplified to owner-only; alembic migrations run on startup (2026-03-06)
+- [x] Space visibility (private/shared): spaces default to private, users can toggle to shared so coworkers see them; repos inherit visibility from parent space; visibility filter applied to spaces and repos API endpoints (2026-03-06)
 - [x] Auto-discover spaces + multi-account support: GitHubAccount model, OAuth auto-discovers orgs/personal repos, toggle spaces on/off, link multiple GitHub accounts (personal + enterprise), no manual space creation (2026-03-05)
 - [x] Multi-space support with GitHub OAuth: spaces for multiple GitHub orgs/users, OAuth identity flow, per-space tokens with Fernet encryption, grouped OrgOverview, SpaceManager UI, User model replaces TeamMember (2026-03-05)
 - [x] User management & PR assignment: team management modal, per-PR assignee dropdown, assignee filter that dims non-matching cards, team progress checkboxes in detail panel (2026-03-05)

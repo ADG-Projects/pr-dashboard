@@ -21,19 +21,27 @@ from src.api.spaces import router as spaces_router
 from src.api.stacks import router as stacks_router
 from src.api.team import router as team_router
 from src.config.settings import settings
-from src.db.base import Base
-from src.db.engine import engine
 from src.services.sync_service import SyncService
 
 sync_service = SyncService(interval_seconds=settings.sync_interval_seconds)
 
 
+def _run_alembic_upgrade() -> None:
+    """Run alembic upgrade head synchronously at startup."""
+    from alembic.config import Config
+
+    from alembic import command
+
+    alembic_cfg = Config(str(Path(__file__).parent.parent / "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", str(Path(__file__).parent.parent / "alembic"))
+    command.upgrade(alembic_cfg, "head")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
-    """Create tables and start background sync on startup."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables created")
+    """Run migrations and start background sync on startup."""
+    _run_alembic_upgrade()
+    logger.info("Database migrations applied")
 
     await sync_service.start()
 

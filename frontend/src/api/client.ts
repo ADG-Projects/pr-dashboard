@@ -61,6 +61,8 @@ export interface RepoSummary {
   stack_count: number;
   space_id: number | null;
   space_name: string | null;
+  visibility: 'private' | 'shared';
+  user_id: number | null;
 }
 
 export interface PRSummary {
@@ -193,6 +195,11 @@ export const api = {
     request<void>(`/api/spaces/${id}`, { method: 'DELETE' }),
   listSpaceAvailableRepos: (spaceId: number) =>
     request<AvailableRepo[]>(`/api/spaces/${spaceId}/available-repos`),
+  setRepoVisibility: (id: number, visibility: 'private' | 'shared') =>
+    request<RepoSummary>(`/api/repos/${id}/visibility`, {
+      method: 'PATCH',
+      body: JSON.stringify({ visibility }),
+    }),
   checkSpaceConnectivity: (spaceId: number) =>
     request<{ ok: boolean; error?: string }>(
       `/api/spaces/${spaceId}/connectivity`,

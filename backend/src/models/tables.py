@@ -68,10 +68,14 @@ class Space(Base):
     github_account_id: Mapped[int | None] = mapped_column(
         ForeignKey("github_accounts.id", ondelete="SET NULL"), nullable=True
     )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     github_account: Mapped["GitHubAccount | None"] = relationship(back_populates="spaces")
+    user: Mapped["User | None"] = relationship(foreign_keys=[user_id])
     repos: Mapped[list["TrackedRepo"]] = relationship(back_populates="space")
 
 
@@ -89,8 +93,13 @@ class TrackedRepo(Base):
     space_id: Mapped[int | None] = mapped_column(
         ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
     )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    visibility: Mapped[str] = mapped_column(String(20), nullable=False, server_default="private")
 
     space: Mapped["Space | None"] = relationship(back_populates="repos")
+    user: Mapped["User | None"] = relationship(foreign_keys=[user_id])
     pull_requests: Mapped[list["PullRequest"]] = relationship(back_populates="repo")
     stacks: Mapped[list["PRStack"]] = relationship(back_populates="repo")
 

@@ -21,8 +21,8 @@ npm run dev  # Starts on :5173, proxies /api to :8000
 ```
 
 ### Database
-Requires PostgreSQL. Tables auto-create on startup via `Base.metadata.create_all`.
-For migrations: `cd backend && uv run alembic upgrade head`
+Requires PostgreSQL. Alembic migrations run automatically on startup.
+For manual migrations: `cd backend && uv run alembic upgrade head`
 
 ## Architecture
 
@@ -35,7 +35,8 @@ For migrations: `cd backend && uv run alembic upgrade head`
 - **Two-layer auth**: password gate (HMAC cookie) + GitHub OAuth identity (separate cookie)
 - **Multi-account**: Users can link multiple GitHub accounts (GitHubAccount model), each with its own token + base_url (supports GitHub.com + GHE)
 - **Auto-discovery**: On OAuth login, the app calls `/user/orgs` + `/user` to auto-create Space rows for each org and the personal account
-- **Spaces**: each space = a discovered org or personal account, linked to a GitHubAccount for its token. Users toggle spaces on/off to control which orgs are synced.
+- **Spaces**: each space = a discovered org or personal account, linked to a GitHubAccount for its token. Users toggle spaces on/off to control which orgs are synced. Spaces are owner-only (no shared concept).
+- **Repo visibility**: each TrackedRepo has its own `visibility` (private/shared) and `user_id` (owner). Private repos only visible to owner; shared repos visible to all. Visibility toggled per-repo on the OrgOverview page.
 - Background sync loop runs per-active-space, getting token from `space.github_account`
 - Stack detection via BFS on `head_ref`/`base_ref` relationships between open PRs
 - SSE broadcasts progress updates and sync completions to connected clients

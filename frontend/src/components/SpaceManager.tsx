@@ -99,7 +99,6 @@ export function SpaceManager({ onClose }: Props) {
                   removeAccountMutation.mutate(account.id);
                 }
               }}
-
               isDiscovering={discoverMutation.isPending}
             />
           ))}

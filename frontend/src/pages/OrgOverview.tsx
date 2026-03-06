@@ -144,6 +144,14 @@ export function OrgOverview() {
     },
   });
 
+  const visibilityMutation = useMutation({
+    mutationFn: ({ id, visibility }: { id: number; visibility: 'private' | 'shared' }) =>
+      api.setRepoVisibility(id, visibility),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['repos'] });
+    },
+  });
+
   const [browserSpace, setBrowserSpace] = useState<Space | null>(null);
 
   // Group repos by space
@@ -283,6 +291,23 @@ export function OrgOverview() {
                     />
                   </Tooltip>
                   <span className={styles.repoName}>{repo.full_name}</span>
+                  {user && repo.user_id === user.id && (
+                    <Tooltip text={`Click to make ${repo.visibility === 'private' ? 'shared' : 'private'}`} position="top">
+                      <button
+                        className={`${styles.visibilityBadge} ${repo.visibility === 'shared' ? styles.visibilityShared : styles.visibilityPrivate}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          visibilityMutation.mutate({
+                            id: repo.id,
+                            visibility: repo.visibility === 'private' ? 'shared' : 'private',
+                          });
+                        }}
+                      >
+                        {repo.visibility}
+                      </button>
+                    </Tooltip>
+                  )}
                   <button
                     className={styles.untrackBtn}
                     title="Untrack repo"

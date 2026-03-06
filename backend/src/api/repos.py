@@ -3,13 +3,14 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
-from src.api.schemas import RepoCreate, RepoDetail, RepoSummary
+from src.api.auth import get_github_user_id
+from src.api.schemas import RepoCreate, RepoDetail, RepoSummary, RepoVisibilityUpdate
 from src.db.engine import get_session
 from src.models.tables import CheckRun, PRStack, PullRequest, Space, TrackedRepo
 from src.services.crypto import decrypt_token
@@ -20,15 +21,27 @@ router = APIRouter(prefix="/api/repos", tags=["repos"])
 
 @router.get("", response_model=list[RepoSummary])
 async def list_repos(
+    request: Request,
     space_id: int | None = Query(None),
     session: AsyncSession = Depends(get_session),
 ) -> list[RepoSummary]:
-    """List all tracked repos with summary stats, optionally filtered by space."""
+    """List tracked repos visible to the current user, optionally filtered by space."""
+    user_id = get_github_user_id(request)
     stmt = (
         select(TrackedRepo)
         .options(joinedload(TrackedRepo.space))
         .where(TrackedRepo.is_active.is_(True))
     )
+    # Visibility filter: direct repo-level visibility
+    if user_id:
+        stmt = stmt.where(
+            or_(
+                TrackedRepo.visibility == "shared",
+                TrackedRepo.user_id == user_id,
+            )
+        )
+    else:
+        stmt = stmt.where(TrackedRepo.visibility == "shared")
     if space_id is not None:
         stmt = stmt.where(TrackedRepo.space_id == space_id)
 
@@ -89,6 +102,8 @@ async def list_repos(
                 stack_count=stack_count,
                 space_id=repo.space_id,
                 space_name=repo.space.name if repo.space else None,
+                visibility=repo.visibility,
+                user_id=repo.user_id,
             )
         )
 
@@ -96,7 +111,9 @@ async def list_repos(
 
 
 @router.post("", response_model=RepoDetail, status_code=201)
-async def add_repo(body: RepoCreate, session: AsyncSession = Depends(get_session)) -> RepoDetail:
+async def add_repo(
+    body: RepoCreate, request: Request, session: AsyncSession = Depends(get_session)
+) -> RepoDetail:
     """Add a repo to track. Requires space_id to determine which token to use."""
     if not body.space_id:
         raise HTTPException(status_code=400, detail="space_id is required")
@@ -114,10 +131,12 @@ async def add_repo(body: RepoCreate, session: AsyncSession = Depends(get_session
     existing = (
         await session.execute(select(TrackedRepo).where(TrackedRepo.full_name == full_name))
     ).scalar_one_or_none()
+    repo_user_id = get_github_user_id(request)
     if existing:
         if not existing.is_active:
             existing.is_active = True
             existing.space_id = body.space_id
+            existing.user_id = repo_user_id
             await session.commit()
             await session.refresh(existing)
             return RepoDetail(
@@ -130,6 +149,8 @@ async def add_repo(body: RepoCreate, session: AsyncSession = Depends(get_session
                 last_synced_at=existing.last_synced_at,
                 created_at=existing.created_at,
                 space_id=existing.space_id,
+                visibility=existing.visibility,
+                user_id=existing.user_id,
             )
         raise HTTPException(status_code=409, detail=f"{full_name} is already tracked")
 
@@ -151,6 +172,7 @@ async def add_repo(body: RepoCreate, session: AsyncSession = Depends(get_session
         full_name=full_name,
         default_branch=gh_repo.get("default_branch", "main"),
         space_id=body.space_id,
+        user_id=repo_user_id,
     )
     session.add(repo)
     await session.commit()
@@ -195,6 +217,8 @@ async def add_repo(body: RepoCreate, session: AsyncSession = Depends(get_session
         last_synced_at=repo.last_synced_at,
         created_at=repo.created_at,
         space_id=repo.space_id,
+        visibility=repo.visibility,
+        user_id=repo.user_id,
     )
 
 
@@ -237,3 +261,49 @@ async def force_sync(repo_id: int, session: AsyncSession = Depends(get_session))
             await gh.close()
 
     return {"status": "sync complete", "repo": repo.full_name}
+
+
+@router.patch("/{repo_id}/visibility", response_model=RepoSummary)
+async def set_repo_visibility(
+    repo_id: int,
+    body: RepoVisibilityUpdate,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> RepoSummary:
+    """Set a repo's visibility (private or shared). Owner only."""
+    if body.visibility not in ("private", "shared"):
+        raise HTTPException(status_code=400, detail="visibility must be 'private' or 'shared'")
+
+    user_id = get_github_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    repo = await session.get(TrackedRepo, repo_id)
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repo not found")
+    if repo.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Only the repo owner can change visibility")
+
+    repo.visibility = body.visibility
+    await session.commit()
+    await session.refresh(repo, attribute_names=["space"])
+
+    logger.info(f"Repo '{repo.full_name}' visibility set to '{repo.visibility}'")
+
+    return RepoSummary(
+        id=repo.id,
+        owner=repo.owner,
+        name=repo.name,
+        full_name=repo.full_name,
+        is_active=repo.is_active,
+        default_branch=repo.default_branch,
+        last_synced_at=repo.last_synced_at,
+        open_pr_count=0,
+        failing_ci_count=0,
+        stale_pr_count=0,
+        stack_count=0,
+        space_id=repo.space_id,
+        space_name=repo.space.name if repo.space else None,
+        visibility=repo.visibility,
+        user_id=repo.user_id,
+    )

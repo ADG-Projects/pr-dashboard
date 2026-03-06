@@ -54,6 +54,10 @@ class RepoCreate(BaseModel):
     space_id: int | None = None
 
 
+class RepoVisibilityUpdate(BaseModel):
+    visibility: str  # "private" or "shared"
+
+
 class RepoSummary(BaseModel):
     id: int
     owner: str
@@ -68,6 +72,8 @@ class RepoSummary(BaseModel):
     stack_count: int = 0
     space_id: int | None = None
     space_name: str | None = None
+    visibility: str = "private"
+    user_id: int | None = None
 
 
 class RepoDetail(BaseModel):
@@ -80,6 +86,8 @@ class RepoDetail(BaseModel):
     last_synced_at: datetime | None
     created_at: datetime
     space_id: int | None = None
+    visibility: str = "private"
+    user_id: int | None = None
 
 
 # ── Pull Requests ────────────────────────────────────────────

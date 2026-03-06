@@ -38,6 +38,7 @@ async def discover_spaces_for_account(session: AsyncSession, account: GitHubAcco
             space = await _upsert_space(
                 session,
                 account_id=account.id,
+                user_id=account.user_id,
                 slug=slug,
                 name=name,
                 space_type="org",
@@ -63,6 +64,7 @@ async def discover_spaces_for_account(session: AsyncSession, account: GitHubAcco
                     space = await _upsert_space(
                         session,
                         account_id=account.id,
+                        user_id=account.user_id,
                         slug=slug,
                         name=slug,
                         space_type="org",
@@ -84,6 +86,7 @@ async def discover_spaces_for_account(session: AsyncSession, account: GitHubAcco
             space = await _upsert_space(
                 session,
                 account_id=account.id,
+                user_id=account.user_id,
                 slug=gh_user["login"],
                 name=gh_user.get("name") or gh_user["login"],
                 space_type="user",
@@ -104,6 +107,7 @@ async def discover_spaces_for_account(session: AsyncSession, account: GitHubAcco
 async def _upsert_space(
     session: AsyncSession,
     account_id: int,
+    user_id: int,
     slug: str,
     name: str,
     space_type: str,
@@ -123,6 +127,7 @@ async def _upsert_space(
             slug=slug,
             space_type=space_type,
             github_account_id=account_id,
+            user_id=user_id,
             is_active=False,  # User toggles on which orgs to track
         )
         session.add(space)
@@ -130,5 +135,7 @@ async def _upsert_space(
     else:
         space.name = name
         space.space_type = space_type
+        if space.user_id is None:
+            space.user_id = user_id
 
     return space

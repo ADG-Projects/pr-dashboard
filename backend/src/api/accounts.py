@@ -205,6 +205,7 @@ async def add_space_to_account(
         slug=body.slug,
         space_type=body.space_type,
         github_account_id=account_id,
+        user_id=user_id,
         is_active=False,
     )
     session.add(space)

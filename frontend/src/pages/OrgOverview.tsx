@@ -235,33 +235,39 @@ export function OrgOverview() {
             Track pull requests across your GitHub orgs and personal repos, all in one place.
           </p>
           <div className={styles.steps}>
-            {oauthConfigured && (
-              <div className={`${styles.step} ${user ? styles.stepDone : ''}`}>
-                <span className={styles.stepNum}>{user ? '\u2713' : '1'}</span>
-                <div className={styles.stepContent}>
-                  <strong>Sign in with GitHub</strong>
-                  <span className={styles.stepDesc}>
-                    Your orgs and personal account are auto-discovered. Link multiple accounts for work + personal.
-                  </span>
-                  {!user && (
-                    <button
-                      className={styles.githubBtn}
-                      onClick={() => { window.location.href = '/api/auth/github'; }}
-                    >
-                      <GitHubIcon size={16} />
-                      Sign in with GitHub
-                    </button>
-                  )}
+            {oauthConfigured && (() => {
+              const hasAccounts = !!user && (spaces ?? []).length > 0;
+              return (
+                <div className={`${styles.step} ${hasAccounts ? styles.stepDone : ''}`}>
+                  <span className={styles.stepNum}>{hasAccounts ? '\u2713' : '1'}</span>
+                  <div className={styles.stepContent}>
+                    <strong>{hasAccounts ? 'GitHub account linked' : 'Sign in with GitHub'}</strong>
+                    <span className={styles.stepDesc}>
+                      Your orgs and personal account are auto-discovered. Link multiple accounts for work + personal.
+                    </span>
+                    {!hasAccounts && (
+                      <button
+                        className={styles.githubBtn}
+                        onClick={() => { window.location.href = user ? '/api/auth/github?link=true' : '/api/auth/github'; }}
+                      >
+                        <GitHubIcon size={16} />
+                        {user ? 'Link a GitHub account' : 'Sign in with GitHub'}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
-            <div className={styles.step}>
-              <span className={styles.stepNum}>{oauthConfigured ? '2' : '1'}</span>
-              <div className={styles.stepContent}>
-                <strong>Enable spaces</strong>
-                <span className={styles.stepDesc}>
-                  Toggle on the orgs you want to track. Open Spaces to see your discovered accounts.
-                </span>
+              );
+            })()}
+            {(() => {
+              const hasActiveSpaces = (spaces ?? []).some(s => s.is_active);
+              return (
+                <div className={`${styles.step} ${hasActiveSpaces ? styles.stepDone : ''}`}>
+                  <span className={styles.stepNum}>{hasActiveSpaces ? '\u2713' : oauthConfigured ? '2' : '1'}</span>
+                  <div className={styles.stepContent}>
+                    <strong>Enable spaces</strong>
+                    <span className={styles.stepDesc}>
+                      Toggle on the orgs you want to track. Open Spaces to see your discovered accounts.
+                    </span>
                 <button
                   className={styles.stepBtn}
                   onClick={() => window.dispatchEvent(new Event('open-spaces'))}
@@ -270,6 +276,8 @@ export function OrgOverview() {
                 </button>
               </div>
             </div>
+              );
+            })()}
             <div className={styles.step}>
               <span className={styles.stepNum}>{oauthConfigured ? '3' : '2'}</span>
               <div className={styles.stepContent}>
@@ -409,7 +417,7 @@ export function OrgOverview() {
                 onClick={() => setBrowserSpace(space)}
               >
                 <span className={styles.addIcon}>+</span>
-                <span className={styles.addTitle}>Add repos</span>
+                <span className={styles.addTitle}>Add your first repo</span>
               </button>
             )}
           </div>

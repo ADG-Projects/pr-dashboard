@@ -26,6 +26,24 @@ export function useSSE() {
       }
     });
 
-    return () => source.close();
+    source.addEventListener('spaces_discovered', () => {
+      qc.invalidateQueries({ queryKey: ['spaces'] });
+      qc.invalidateQueries({ queryKey: ['accounts'] });
+    });
+
+    // After OAuth redirect the background discovery task may still be running.
+    // Poll spaces/accounts a few times to catch the result regardless of SSE timing.
+    let pollCount = 0;
+    const pollInterval = setInterval(() => {
+      pollCount++;
+      qc.invalidateQueries({ queryKey: ['spaces'] });
+      qc.invalidateQueries({ queryKey: ['accounts'] });
+      if (pollCount >= 5) clearInterval(pollInterval);
+    }, 2000);
+
+    return () => {
+      source.close();
+      clearInterval(pollInterval);
+    };
   }, [qc]);
 }

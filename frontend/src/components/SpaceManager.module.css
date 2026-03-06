@@ -108,49 +108,39 @@
   background: var(--bg-elevated);
 }
 
-.spaceToggle {
-  position: relative;
-  width: 32px;
-  height: 18px;
-  flex-shrink: 0;
-}
-
-.spaceToggle input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.toggleTrack {
-  position: absolute;
-  inset: 0;
-  background: var(--bg-elevated);
+.visibilityBtn {
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border-default);
-  border-radius: 9px;
   cursor: pointer;
-  transition: background 0.2s;
+  font-family: inherit;
+  font-weight: 600;
+  min-width: 52px;
+  text-align: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.toggleTrack::after {
-  content: '';
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--text-dim);
-  top: 2px;
-  left: 2px;
-  transition: transform 0.2s, background 0.2s;
-}
-
-.spaceToggle input:checked + .toggleTrack {
+.visibilityShown {
   background: var(--accent-green-bg);
   border-color: var(--accent-green);
+  color: var(--accent-green);
+}
+.visibilityShown:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-default);
+  color: var(--text-dim);
 }
 
-.spaceToggle input:checked + .toggleTrack::after {
-  transform: translateX(14px);
-  background: var(--accent-green);
+.visibilityHidden {
+  background: var(--bg-elevated);
+  border-color: var(--border-default);
+  color: var(--text-dim);
+}
+.visibilityHidden:hover {
+  background: var(--accent-green-bg);
+  border-color: var(--accent-green);
+  color: var(--accent-green);
 }
 
 .spaceName {

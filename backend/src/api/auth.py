@@ -17,6 +17,7 @@ from src.db.engine import async_session_factory
 from src.models.tables import GitHubAccount, User
 from src.services.crypto import encrypt_token
 from src.services.discovery import discover_spaces_for_account
+from src.services.events import broadcast_event
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -292,6 +293,7 @@ async def github_oauth_callback(code: str, state: str, request: Request) -> Redi
             account.avatar_url = gh_user.get("avatar_url")
             account.encrypted_token = encrypted
             account.last_login_at = datetime.now(UTC)
+            account.is_active = True
 
         await session.commit()
         await session.refresh(user)
@@ -332,6 +334,7 @@ async def _discover_spaces_background(account_id: int) -> None:
             if account:
                 await discover_spaces_for_account(session, account)
                 await session.commit()
+                await broadcast_event("spaces_discovered", {"account_id": account_id})
     except Exception:
         logger.exception(f"Failed to auto-discover spaces for account {account_id}")
 

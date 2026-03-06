@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from src.api.auth import get_github_user_id
 from src.api.schemas import SpaceOut, SpaceToggle
 from src.db.engine import get_session
-from src.models.tables import Space, TrackedRepo
+from src.models.tables import GitHubAccount, Space, TrackedRepo
 from src.services.crypto import decrypt_token
 from src.services.github_client import GitHubClient
 
@@ -52,7 +52,16 @@ async def list_spaces(
 ) -> list[SpaceOut]:
     """List spaces belonging to the current user."""
     user_id = get_github_user_id(request)
-    stmt = select(Space).options(selectinload(Space.github_account)).order_by(Space.created_at)
+    stmt = (
+        select(Space)
+        .join(GitHubAccount, Space.github_account_id == GitHubAccount.id, isouter=True)
+        .options(selectinload(Space.github_account))
+        .where(
+            # Only return spaces whose account is active (or has no account)
+            (GitHubAccount.is_active == True) | (Space.github_account_id.is_(None))  # noqa: E712
+        )
+        .order_by(Space.created_at)
+    )
     if user_id:
         stmt = stmt.where(Space.user_id == user_id)
     else:

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSSE } from '../api/useSSE';
 import { useCurrentUser } from '../App';
 import { api } from '../api/client';
@@ -14,6 +14,7 @@ import styles from './Shell.module.css';
 
 export function Shell() {
   const location = useLocation();
+  const qc = useQueryClient();
   useSSE();
   const isHome = location.pathname === '/';
   const [showTeam, setShowTeam] = useState(false);
@@ -54,6 +55,9 @@ export function Shell() {
     await api.disconnectGitHub();
     setUser(null);
     setShowUserMenu(false);
+    qc.removeQueries({ queryKey: ['accounts'] });
+    qc.removeQueries({ queryKey: ['spaces'] });
+    qc.removeQueries({ queryKey: ['repos'] });
   }
 
   function handleLinkOAuth() {

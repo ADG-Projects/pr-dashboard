@@ -73,6 +73,7 @@ export function SpaceManager({ onClose }: Props) {
   for (const list of spacesByAccount.values()) list.sort(sortSpaces);
   orphanSpaces.sort(sortSpaces);
 
+
   function handleSignIn() {
     window.location.href = '/api/auth/github';
   }
@@ -93,7 +94,7 @@ export function SpaceManager({ onClose }: Props) {
         <div className={styles.body}>
           <p className={styles.hint}>
             Each GitHub account you link is scanned for organizations and personal repos.
-            Toggle an org/user <strong>on</strong> to start tracking its repositories on the dashboard.
+            Mark a space as <strong>Shown</strong> to track its repositories on the dashboard.
           </p>
 
           {accounts?.map((account) => (
@@ -104,7 +105,7 @@ export function SpaceManager({ onClose }: Props) {
               onToggleSpace={(id, active) => toggleMutation.mutate({ id, isActive: active })}
               onDiscover={() => discoverMutation.mutate(account.id)}
               onRemove={() => {
-                if (window.confirm(`Unlink ${account.login}?`)) {
+                if (window.confirm(`Unlink ${account.login}? All its spaces will be permanently removed. You can rediscover them by linking the account again.`)) {
                   removeAccountMutation.mutate(account.id);
                 }
               }}
@@ -341,16 +342,14 @@ function SpaceRow({
 }) {
   return (
     <div className={`${styles.spaceRow} ${!space.is_active ? styles.spaceInactive : ''}`}>
-      <label className={styles.spaceToggle}>
-        <input
-          type="checkbox"
-          checked={space.is_active}
-          onChange={(e) => onToggle(e.target.checked)}
-        />
-        <span className={styles.toggleTrack} />
-      </label>
       <span className={styles.spaceName}>{space.name}</span>
       <span className={styles.spaceType}>{space.space_type}</span>
+      <button
+        className={`${styles.visibilityBtn} ${space.is_active ? styles.visibilityShown : styles.visibilityHidden}`}
+        onClick={() => onToggle(!space.is_active)}
+      >
+        {space.is_active ? 'Shown' : 'Hidden'}
+      </button>
     </div>
   );
 }

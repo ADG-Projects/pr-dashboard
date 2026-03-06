@@ -232,5 +232,11 @@ async def remove_account(
         raise HTTPException(status_code=404, detail="Account not found")
 
     account.is_active = False
+
+    # Delete all spaces for this account — re-login will rediscover them
+    from sqlalchemy import delete
+
+    await session.execute(delete(Space).where(Space.github_account_id == account_id))
+
     await session.commit()
-    logger.info(f"Deactivated GitHub account: {account.login}")
+    logger.info(f"Deactivated GitHub account and deleted its spaces: {account.login}")

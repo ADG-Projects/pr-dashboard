@@ -1,12 +1,13 @@
 """API routes for space management (auto-discovered GitHub connections)."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.api.schemas import SpaceOut, SpaceToggle
+from src.api.auth import get_github_user_id
+from src.api.schemas import SpaceOut, SpaceToggle, SpaceVisibilityUpdate
 from src.db.engine import get_session
 from src.models.tables import Space, TrackedRepo
 from src.services.crypto import decrypt_token
@@ -29,41 +30,47 @@ def _base_url_for_space(space: Space) -> str:
     return "https://api.github.com"
 
 
+def _space_to_out(s: Space) -> SpaceOut:
+    return SpaceOut(
+        id=s.id,
+        name=s.name,
+        slug=s.slug,
+        space_type=s.space_type,
+        base_url=_base_url_for_space(s),
+        is_active=s.is_active,
+        has_token=bool(s.github_account and s.github_account.encrypted_token),
+        visibility=s.visibility,
+        user_id=s.user_id,
+        created_at=s.created_at,
+        github_account_id=s.github_account_id,
+        github_account_login=s.github_account.login if s.github_account else None,
+    )
+
+
 @router.get("", response_model=list[SpaceOut])
 async def list_spaces(
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> list[SpaceOut]:
-    """List all spaces."""
-    spaces = (
-        (
-            await session.execute(
-                select(Space).options(selectinload(Space.github_account)).order_by(Space.created_at)
-            )
+    """List spaces visible to the current user (own + shared)."""
+    user_id = get_github_user_id(request)
+    stmt = select(Space).options(selectinload(Space.github_account)).order_by(Space.created_at)
+    if user_id:
+        stmt = stmt.where(
+            or_(Space.visibility == "shared", Space.user_id == user_id)
         )
-        .scalars()
-        .all()
-    )
-    return [
-        SpaceOut(
-            id=s.id,
-            name=s.name,
-            slug=s.slug,
-            space_type=s.space_type,
-            base_url=_base_url_for_space(s),
-            is_active=s.is_active,
-            has_token=bool(s.github_account and s.github_account.encrypted_token),
-            created_at=s.created_at,
-            github_account_id=s.github_account_id,
-            github_account_login=s.github_account.login if s.github_account else None,
-        )
-        for s in spaces
-    ]
+    else:
+        stmt = stmt.where(Space.visibility == "shared")
+
+    spaces = (await session.execute(stmt)).scalars().all()
+    return [_space_to_out(s) for s in spaces]
 
 
 @router.patch("/{space_id}/toggle", response_model=SpaceOut)
 async def toggle_space(
     space_id: int,
     body: SpaceToggle,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> SpaceOut:
     """Enable or disable a space (controls whether its repos are synced)."""
@@ -74,24 +81,48 @@ async def toggle_space(
     if not space:
         raise HTTPException(status_code=404, detail="Space not found")
 
+    user_id = get_github_user_id(request)
+    if space.visibility == "private" and space.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Only the space owner can toggle a private space")
+
     space.is_active = body.is_active
     await session.commit()
     await session.refresh(space)
 
     logger.info(f"Space '{space.name}' {'enabled' if space.is_active else 'disabled'}")
+    return _space_to_out(space)
 
-    return SpaceOut(
-        id=space.id,
-        name=space.name,
-        slug=space.slug,
-        space_type=space.space_type,
-        base_url=_base_url_for_space(space),
-        is_active=space.is_active,
-        has_token=bool(space.github_account and space.github_account.encrypted_token),
-        created_at=space.created_at,
-        github_account_id=space.github_account_id,
-        github_account_login=space.github_account.login if space.github_account else None,
+
+@router.patch("/{space_id}/visibility", response_model=SpaceOut)
+async def set_space_visibility(
+    space_id: int,
+    body: SpaceVisibilityUpdate,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> SpaceOut:
+    """Set a space's visibility (private or shared). Owner only."""
+    if body.visibility not in ("private", "shared"):
+        raise HTTPException(status_code=400, detail="visibility must be 'private' or 'shared'")
+
+    user_id = get_github_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    result = await session.execute(
+        select(Space).options(selectinload(Space.github_account)).where(Space.id == space_id)
     )
+    space = result.scalar_one_or_none()
+    if not space:
+        raise HTTPException(status_code=404, detail="Space not found")
+    if space.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Only the space owner can change visibility")
+
+    space.visibility = body.visibility
+    await session.commit()
+    await session.refresh(space)
+
+    logger.info(f"Space '{space.name}' visibility set to '{space.visibility}'")
+    return _space_to_out(space)
 
 
 @router.delete("/{space_id}", status_code=204)

@@ -75,6 +75,15 @@
 }
 .prNumber:hover { color: var(--accent-blue); text-decoration: none; }
 
+.cardAuthor {
+  font-size: 0.62rem;
+  color: var(--text-dim);
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .draftBadge {
   font-size: 0.48rem;
   padding: 1px 4px;
@@ -103,15 +112,23 @@
   margin-top: auto;
 }
 
-.assigneeBadge {
-  font-size: 0.5rem;
-  font-weight: 700;
+.cardAssignee {
+  margin-bottom: 0.2rem;
+}
+.cardAssignee select {
+  background: var(--bg-base);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 0.62rem;
   padding: 1px 4px;
-  border-radius: 3px;
-  background: var(--accent-blue);
-  color: #fff;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+  cursor: pointer;
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+}
+.cardAssignee select:focus {
+  border-color: var(--accent-blue);
 }
 
 .cardDiff {
@@ -146,7 +163,7 @@
 .standaloneCard {
   position: relative;
   width: 210px;
-  height: 85px;
+  height: 116px;
   background: var(--bg-surface);
   border: 2px solid var(--border-default);
   border-radius: var(--radius-lg);

@@ -139,3 +139,42 @@
   font-style: italic;
   margin-bottom: 1rem;
 }
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin: 0 0 0.75rem 0;
+}
+
+.memberAvatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.inactive {
+  opacity: 0.5;
+}
+
+.reactivateBtn {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+}
+.reactivateBtn:hover {
+  background: var(--border-default);
+  color: var(--text-primary);
+}
+
+.sectionTitle {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin: 0.5rem 0;
+  font-weight: 600;
+}

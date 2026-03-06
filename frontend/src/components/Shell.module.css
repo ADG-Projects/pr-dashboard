@@ -57,6 +57,172 @@
   background: var(--bg-elevated);
 }
 
+.spacer {
+  flex: 1;
+}
+
+.userArea {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.userBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 0.25rem 0.75rem;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  transition: background var(--transition-fast);
+}
+.userBtn:hover {
+  background: var(--bg-elevated);
+}
+
+.avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+
+.userName {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  font-size: 0.65rem;
+  opacity: 0.6;
+  margin-left: 0.15rem;
+}
+
+.userMenuWrapper {
+  position: relative;
+}
+
+.userMenu {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  min-width: 220px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.userMenuInfo {
+  padding: 0.6rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.userMenuSection {
+  padding: 0.25rem 0;
+}
+
+.userMenuSectionLabel {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.userMenuAccount {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+}
+
+.userMenuAccountAvatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+}
+
+.userMenuAccountLogin {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userMenuAccountGhe {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.userMenuDivider {
+  height: 1px;
+  background: var(--border-default);
+  margin: 0.25rem 0;
+}
+
+.userMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast);
+}
+.userMenuItem:hover {
+  background: var(--bg-elevated);
+}
+
+.userMenuItemDanger {
+  color: #e5534b;
+}
+.userMenuItemDanger:hover {
+  background: rgba(229, 83, 75, 0.1);
+}
+
+.githubBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--radius-md);
+  background: #24292f;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--transition-fast);
+}
+.githubBtn:hover {
+  background: #32383f;
+}
+
 .main {
   overflow: auto;
   padding: 1.5rem;

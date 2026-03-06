@@ -51,7 +51,7 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
   });
 
   const progressMutation = useMutation({
-    mutationFn: (data: { team_member_id: number; reviewed?: boolean; approved?: boolean }) =>
+    mutationFn: (data: { user_id: number; reviewed?: boolean; approved?: boolean }) =>
       api.updateProgress(prId, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['progress', prId] });
@@ -104,7 +104,7 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
             >
               <option value="">Unassigned</option>
               {activeTeam.map((m) => (
-                <option key={m.id} value={m.id}>{m.display_name}</option>
+                <option key={m.id} value={m.id}>{m.name || m.login}</option>
               ))}
             </select>
           </section>
@@ -184,10 +184,10 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
               </Tooltip>
               <div className={styles.progressList}>
                 {activeTeam.map((member) => {
-                  const p = progress?.find((x) => x.team_member_id === member.id);
+                  const p = progress?.find((x) => x.user_id === member.id);
                   return (
                     <div key={member.id} className={styles.progressRow}>
-                      <span className={styles.progressName}>{member.display_name}</span>
+                      <span className={styles.progressName}>{member.name || member.login}</span>
                       <Tooltip text="Reviewed" position="top">
                         <label className={styles.progressCheck}>
                           <input
@@ -195,7 +195,7 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
                             checked={p?.reviewed ?? false}
                             onChange={(e) =>
                               progressMutation.mutate({
-                                team_member_id: member.id,
+                                user_id: member.id,
                                 reviewed: e.target.checked,
                               })
                             }
@@ -210,7 +210,7 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
                             checked={p?.approved ?? false}
                             onChange={(e) =>
                               progressMutation.mutate({
-                                team_member_id: member.id,
+                                user_id: member.id,
                                 approved: e.target.checked,
                               })
                             }

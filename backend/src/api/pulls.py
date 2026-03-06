@@ -18,8 +18,8 @@ from src.models.tables import (
     PRStackMembership,
     PullRequest,
     Review,
-    TeamMember,
     TrackedRepo,
+    User,
 )
 from src.services.events import broadcast_event
 
@@ -96,7 +96,7 @@ def _pr_to_summary(pr: PullRequest, stack_id: int | None = None) -> PRSummary:
         review_state=_compute_review_state(pr.reviews),
         stack_id=stack_id,
         assignee_id=pr.assignee_id,
-        assignee_name=pr.assignee.display_name if pr.assignee else None,
+        assignee_name=(pr.assignee.name or pr.assignee.login) if pr.assignee else None,
         rebased_since_approval=_rebased_since_approval(pr),
     )
 
@@ -191,7 +191,7 @@ async def get_pull(
         ci_status=_compute_ci_status(pr.check_runs),
         review_state=_compute_review_state(pr.reviews),
         assignee_id=pr.assignee_id,
-        assignee_name=pr.assignee.display_name if pr.assignee else None,
+        assignee_name=(pr.assignee.name or pr.assignee.login) if pr.assignee else None,
         rebased_since_approval=_rebased_since_approval(pr),
         check_runs=[
             CheckRunOut(
@@ -237,9 +237,9 @@ async def update_assignee(
         raise HTTPException(status_code=404, detail=f"PR #{number} not found")
 
     if body.assignee_id is not None:
-        member = await session.get(TeamMember, body.assignee_id)
-        if not member:
-            raise HTTPException(status_code=404, detail="Team member not found")
+        user = await session.get(User, body.assignee_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
 
     pr.assignee_id = body.assignee_id
     await session.commit()

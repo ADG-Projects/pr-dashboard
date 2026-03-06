@@ -7,7 +7,7 @@
  */
 
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
-import type { PRSummary, Stack } from '../api/client';
+import type { PRSummary, Stack, User } from '../api/client';
 import { StatusDot } from './StatusDot';
 import { Tooltip } from './Tooltip';
 import styles from './DependencyGraph.module.css';
@@ -20,10 +20,13 @@ interface Props {
   dimAuthor: string | null;
   selectedPrId: number | null;
   onSelectPr: (id: number | null) => void;
+  team: User[];
+  repoId: number;
+  onAssign: (repoId: number, prNumber: number, assigneeId: number | null) => void;
 }
 
 const CARD_W = 210;
-const CARD_H = 85;
+const CARD_H = 116;
 const GAP_X = 50;
 const GAP_Y = 30;
 const PAD = 20;
@@ -41,7 +44,7 @@ interface Arrow {
   dimmed: boolean;
 }
 
-export function DependencyGraph({ prs, stacks, highlightStackId, dimAssigneeId, dimAuthor, selectedPrId, onSelectPr }: Props) {
+export function DependencyGraph({ prs, stacks, highlightStackId, dimAssigneeId, dimAuthor, selectedPrId, onSelectPr, team, repoId, onAssign }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -239,9 +242,26 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimAssigneeId, 
           >
             #{pr.number}
           </a>
+          {pr.author && <span className={styles.cardAuthor}>{pr.author}</span>}
           {pr.draft && <Tooltip text="Draft PR — not ready for merge" position="top"><span className={styles.draftBadge}>Draft</span></Tooltip>}
         </div>
         <div className={styles.cardTitle}>{pr.title}</div>
+        <div className={styles.cardAssignee}>
+          <select
+            value={pr.assignee_id ?? ''}
+            onChange={(e) => {
+              e.stopPropagation();
+              const val = e.target.value;
+              onAssign(repoId, pr.number, val ? Number(val) : null);
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <option value="">Unassigned</option>
+            {team.map((m) => (
+              <option key={m.id} value={m.id}>{m.name || m.login}</option>
+            ))}
+          </select>
+        </div>
         <div className={styles.cardFooter}>
           <Tooltip text={`CI: ${pr.ci_status}`} position="top">
             <StatusDot status={pr.ci_status} size={7} />
@@ -252,13 +272,6 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimAssigneeId, 
           {pr.rebased_since_approval && (
             <Tooltip text="Rebased since approval — re-review may be needed" position="top">
               <span className={styles.badgeWarn}>!</span>
-            </Tooltip>
-          )}
-          {pr.assignee_name && (
-            <Tooltip text={`Assigned to ${pr.assignee_name}`} position="top">
-              <span className={styles.assigneeBadge}>
-                {pr.assignee_name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
-              </span>
             </Tooltip>
           )}
           <Tooltip text={`+${pr.additions} added, -${pr.deletions} removed`} position="top">

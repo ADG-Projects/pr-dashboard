@@ -10,28 +10,38 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
+from src.api.accounts import router as accounts_router
 from src.api.auth import AuthMiddleware
 from src.api.auth import router as auth_router
 from src.api.events import router as events_router
 from src.api.progress import router as progress_router
 from src.api.pulls import router as pulls_router
 from src.api.repos import router as repos_router
+from src.api.spaces import router as spaces_router
 from src.api.stacks import router as stacks_router
 from src.api.team import router as team_router
 from src.config.settings import settings
-from src.db.base import Base
-from src.db.engine import engine
 from src.services.sync_service import SyncService
 
 sync_service = SyncService(interval_seconds=settings.sync_interval_seconds)
 
 
+def _run_alembic_upgrade() -> None:
+    """Run alembic upgrade head synchronously at startup."""
+    from alembic.config import Config
+
+    from alembic import command
+
+    alembic_cfg = Config(str(Path(__file__).parent.parent / "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", str(Path(__file__).parent.parent / "alembic"))
+    command.upgrade(alembic_cfg, "head")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
-    """Create tables and start background sync on startup."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables created")
+    """Run migrations and start background sync on startup."""
+    _run_alembic_upgrade()
+    logger.info("Database migrations applied")
 
     await sync_service.start()
 
@@ -54,7 +64,7 @@ if settings.dashboard_password:
 # CORS for local development (Vite dev server on :5173)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,7 +72,9 @@ app.add_middleware(
 
 # Register API routers
 app.include_router(auth_router)
+app.include_router(accounts_router)
 app.include_router(repos_router)
+app.include_router(spaces_router)
 app.include_router(pulls_router)
 app.include_router(team_router)
 app.include_router(progress_router)

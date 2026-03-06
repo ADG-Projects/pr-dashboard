@@ -1,6 +1,6 @@
 /** API client for the PR Dashboard backend. */
 
-const BASE = import.meta.env.DEV ? 'http://localhost:8000' : '';
+const BASE = '';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(`${BASE}${path}`, {
@@ -12,10 +12,43 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body = await resp.json().catch(() => ({ detail: resp.statusText }));
     throw new Error(body.detail || `HTTP ${resp.status}`);
   }
+  if (resp.status === 204 || resp.headers.get('content-length') === '0') {
+    return undefined as T;
+  }
   return resp.json();
 }
 
 // ── Types ────────────────────────────────────────
+
+export interface GitHubUser {
+  id: number;
+  login: string;
+  name: string | null;
+  avatar_url: string | null;
+}
+
+export interface Space {
+  id: number;
+  name: string;
+  slug: string;
+  space_type: string;
+  base_url: string;
+  is_active: boolean;
+  has_token: boolean;
+  created_at: string;
+  github_account_id: number | null;
+  github_account_login: string | null;
+}
+
+export interface GitHubAccountInfo {
+  id: number;
+  login: string;
+  avatar_url: string | null;
+  base_url: string;
+  has_token: boolean;
+  created_at: string;
+  last_login_at: string;
+}
 
 export interface RepoSummary {
   id: number;
@@ -29,6 +62,10 @@ export interface RepoSummary {
   failing_ci_count: number;
   stale_pr_count: number;
   stack_count: number;
+  space_id: number | null;
+  space_name: string | null;
+  visibility: 'private' | 'shared';
+  user_id: number | null;
 }
 
 export interface PRSummary {
@@ -90,11 +127,11 @@ export interface Stack {
   members: StackMember[];
 }
 
-export interface TeamMember {
+export interface User {
   id: number;
-  display_name: string;
-  github_login: string | null;
-  email: string | null;
+  login: string;
+  name: string | null;
+  avatar_url: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -102,8 +139,8 @@ export interface TeamMember {
 export interface Progress {
   id: number;
   pull_request_id: number;
-  team_member_id: number;
-  team_member_name: string;
+  user_id: number;
+  user_name: string;
   reviewed: boolean;
   approved: boolean;
   notes: string | null;
@@ -118,16 +155,69 @@ export interface AvailableRepo {
   pushed_at: string | null;
 }
 
+export interface AuthStatus {
+  authenticated: boolean;
+  auth_enabled: boolean;
+  user: GitHubUser | null;
+}
+
 // ── API functions ────────────────────────────────
 
 export const api = {
+  // Accounts
+  listAccounts: () => request<GitHubAccountInfo[]>('/api/accounts'),
+  linkAccountWithToken: (token: string, baseUrl?: string) =>
+    request<GitHubAccountInfo>('/api/accounts', {
+      method: 'POST',
+      body: JSON.stringify({ token, base_url: baseUrl || 'https://api.github.com' }),
+    }),
+  discoverSpaces: (accountId: number) =>
+    request<{ discovered: number; spaces: { id: number; slug: string; space_type: string }[] }>(
+      `/api/accounts/${accountId}/discover`,
+      { method: 'POST' },
+    ),
+  addSpaceToAccount: (accountId: number, slug: string, spaceType: string = 'org', name?: string) =>
+    request<{ id: number; slug: string; already_exists: boolean }>(
+      `/api/accounts/${accountId}/spaces`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ slug, space_type: spaceType, name }),
+      },
+    ),
+  removeAccount: (accountId: number) =>
+    request<void>(`/api/accounts/${accountId}`, { method: 'DELETE' }),
+
+  // Spaces
+  listSpaces: () => request<Space[]>('/api/spaces'),
+  toggleSpace: (id: number, isActive: boolean) =>
+    request<Space>(`/api/spaces/${id}/toggle`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active: isActive }),
+    }),
+  deleteSpace: (id: number) =>
+    request<void>(`/api/spaces/${id}`, { method: 'DELETE' }),
+  listSpaceAvailableRepos: (spaceId: number) =>
+    request<AvailableRepo[]>(`/api/spaces/${spaceId}/available-repos`),
+  setRepoVisibility: (id: number, visibility: 'private' | 'shared') =>
+    request<RepoSummary>(`/api/repos/${id}/visibility`, {
+      method: 'PATCH',
+      body: JSON.stringify({ visibility }),
+    }),
+  checkSpaceConnectivity: (spaceId: number) =>
+    request<{ ok: boolean; error?: string }>(
+      `/api/spaces/${spaceId}/connectivity`,
+      { method: 'POST' },
+    ),
+
   // Repos
-  listRepos: () => request<RepoSummary[]>('/api/repos'),
-  listAvailableRepos: () => request<AvailableRepo[]>('/api/repos/available'),
-  addRepo: (name: string) =>
+  listRepos: (spaceId?: number) => {
+    const qs = spaceId ? `?space_id=${spaceId}` : '';
+    return request<RepoSummary[]>(`/api/repos${qs}`);
+  },
+  addRepo: (name: string, spaceId: number, owner?: string) =>
     request('/api/repos', {
       method: 'POST',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, space_id: spaceId, owner: owner || '' }),
     }),
   removeRepo: (id: number) =>
     request(`/api/repos/${id}`, { method: 'DELETE' }),
@@ -148,14 +238,13 @@ export const api = {
   getStack: (repoId: number, stackId: number) =>
     request<Stack>(`/api/repos/${repoId}/stacks/${stackId}`),
 
-  // Team
-  listTeam: () => request<TeamMember[]>('/api/team'),
-  addTeamMember: (data: { display_name: string; github_login?: string; email?: string }) =>
-    request<TeamMember>('/api/team', { method: 'POST', body: JSON.stringify(data) }),
-  updateTeamMember: (id: number, data: { display_name?: string; github_login?: string; is_active?: boolean }) =>
-    request<TeamMember>(`/api/team/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteTeamMember: (id: number) =>
-    request<void>(`/api/team/${id}`, { method: 'DELETE' }),
+  // Team (users from OAuth)
+  listTeam: () => request<User[]>('/api/team'),
+  updateUser: (id: number, data: { is_active?: boolean }) =>
+    request<User>(`/api/team/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
 
   // Assignee
   assignPr: (repoId: number, number: number, assigneeId: number | null) =>
@@ -167,7 +256,15 @@ export const api = {
   // Progress
   getProgress: (prId: number) =>
     request<Progress[]>(`/api/pulls/${prId}/progress`),
-  updateProgress: (prId: number, data: { team_member_id: number; reviewed?: boolean; approved?: boolean; notes?: string }) =>
+  updateProgress: (
+    prId: number,
+    data: {
+      user_id: number;
+      reviewed?: boolean;
+      approved?: boolean;
+      notes?: string;
+    },
+  ) =>
     request<Progress>(`/api/pulls/${prId}/progress`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -175,10 +272,13 @@ export const api = {
 
   // Auth
   login: (password: string) =>
-    request<{ authenticated: boolean }>('/api/auth/login', {
+    request<AuthStatus>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ password }),
     }),
-  authStatus: () => request<{ authenticated: boolean; auth_enabled: boolean }>('/api/auth/me'),
+  authStatus: () => request<AuthStatus>('/api/auth/me'),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
+  getGitHubUser: () => request<GitHubUser | null>('/api/auth/user'),
+  disconnectGitHub: () =>
+    request('/api/auth/github/disconnect', { method: 'POST' }),
 };

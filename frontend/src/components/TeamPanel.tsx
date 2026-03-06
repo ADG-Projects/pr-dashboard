@@ -1,6 +1,5 @@
-/** Modal panel for managing team members. */
+/** Modal panel for viewing users (created via GitHub OAuth). */
 
-import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { Tooltip } from './Tooltip';
@@ -12,39 +11,20 @@ interface Props {
 
 export function TeamPanel({ onClose }: Props) {
   const qc = useQueryClient();
-  const [displayName, setDisplayName] = useState('');
-  const [githubLogin, setGithubLogin] = useState('');
 
-  const { data: members } = useQuery({
+  const { data: users } = useQuery({
     queryKey: ['team'],
     queryFn: api.listTeam,
   });
 
-  const addMutation = useMutation({
-    mutationFn: (data: { display_name: string; github_login?: string }) =>
-      api.addTeamMember(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['team'] });
-      setDisplayName('');
-      setGithubLogin('');
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.deleteTeamMember(id),
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, is_active }: { id: number; is_active: boolean }) =>
+      api.updateUser(id, { is_active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['team'] }),
   });
 
-  const activeMembers = members?.filter((m) => m.is_active) || [];
-
-  function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    if (!displayName.trim()) return;
-    addMutation.mutate({
-      display_name: displayName.trim(),
-      ...(githubLogin.trim() ? { github_login: githubLogin.trim() } : {}),
-    });
-  }
+  const activeUsers = users?.filter((u) => u.is_active) || [];
+  const inactiveUsers = users?.filter((u) => !u.is_active) || [];
 
   return (
     <div className={styles.overlay} onClick={onClose}>
@@ -54,20 +34,24 @@ export function TeamPanel({ onClose }: Props) {
           <button onClick={onClose} className={styles.closeBtn}>x</button>
         </div>
         <div className={styles.body}>
-          {activeMembers.length === 0 ? (
-            <div className={styles.empty}>No team members yet</div>
+          <p className={styles.hint}>
+            Users appear here after connecting via GitHub OAuth.
+          </p>
+          {activeUsers.length === 0 ? (
+            <div className={styles.empty}>No users yet</div>
           ) : (
             <div className={styles.memberList}>
-              {activeMembers.map((m) => (
-                <div key={m.id} className={styles.memberRow}>
-                  <span className={styles.memberName}>{m.display_name}</span>
-                  {m.github_login && (
-                    <span className={styles.memberLogin}>@{m.github_login}</span>
+              {activeUsers.map((u) => (
+                <div key={u.id} className={styles.memberRow}>
+                  {u.avatar_url && (
+                    <img src={u.avatar_url} alt="" className={styles.memberAvatar} />
                   )}
-                  <Tooltip text="Remove team member" position="left">
+                  <span className={styles.memberName}>{u.name || u.login}</span>
+                  <span className={styles.memberLogin}>@{u.login}</span>
+                  <Tooltip text="Deactivate user" position="left">
                     <button
                       className={styles.deleteBtn}
-                      onClick={() => deleteMutation.mutate(m.id)}
+                      onClick={() => toggleMutation.mutate({ id: u.id, is_active: false })}
                     >
                       x
                     </button>
@@ -77,32 +61,28 @@ export function TeamPanel({ onClose }: Props) {
             </div>
           )}
 
-          <form className={styles.addForm} onSubmit={handleAdd}>
-            <Tooltip text="Name shown in the dashboard (required)" position="top">
-              <input
-                className={styles.input}
-                placeholder="Display name"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-              />
-            </Tooltip>
-            <Tooltip text="GitHub username for matching reviews (optional)" position="top">
-              <input
-                className={styles.input}
-                placeholder="GitHub login"
-                value={githubLogin}
-                onChange={(e) => setGithubLogin(e.target.value)}
-                style={{ flex: 0.7 }}
-              />
-            </Tooltip>
-            <button
-              type="submit"
-              className={styles.addBtn}
-              disabled={!displayName.trim() || addMutation.isPending}
-            >
-              Add
-            </button>
-          </form>
+          {inactiveUsers.length > 0 && (
+            <>
+              <h3 className={styles.sectionTitle}>Inactive</h3>
+              <div className={styles.memberList}>
+                {inactiveUsers.map((u) => (
+                  <div key={u.id} className={`${styles.memberRow} ${styles.inactive}`}>
+                    {u.avatar_url && (
+                      <img src={u.avatar_url} alt="" className={styles.memberAvatar} />
+                    )}
+                    <span className={styles.memberName}>{u.name || u.login}</span>
+                    <span className={styles.memberLogin}>@{u.login}</span>
+                    <button
+                      className={styles.reactivateBtn}
+                      onClick={() => toggleMutation.mutate({ id: u.id, is_active: true })}
+                    >
+                      Reactivate
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

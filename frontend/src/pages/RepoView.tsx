@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useState } from 'react';
-import { api, type PRSummary, type RepoSummary, type TeamMember } from '../api/client';
+import { api, type PRSummary, type RepoSummary, type User } from '../api/client';
 import { DependencyGraph } from '../components/DependencyGraph';
 import { PRDetailPanel } from '../components/PRDetailPanel';
 import { Tooltip } from '../components/Tooltip';
@@ -45,7 +45,7 @@ export function RepoView() {
     queryKey: ['team'],
     queryFn: api.listTeam,
   });
-  const activeTeam = team?.filter((m: TeamMember) => m.is_active) || [];
+  const activeTeam = team?.filter((m: User) => m.is_active) || [];
 
   const syncMutation = useMutation({
     mutationFn: () => api.syncRepo(repo!.id),
@@ -129,8 +129,8 @@ export function RepoView() {
               className={styles.select}
             >
               <option value="">All assignees</option>
-              {activeTeam.map((m: TeamMember) => (
-                <option key={m.id} value={m.id}>{m.display_name}</option>
+              {activeTeam.map((m: User) => (
+                <option key={m.id} value={m.id}>{m.name || m.login}</option>
               ))}
             </select>
           </Tooltip>
@@ -147,6 +147,13 @@ export function RepoView() {
             dimAuthor={authorFilter || null}
             selectedPrId={selectedPrId}
             onSelectPr={selectPr}
+            team={activeTeam}
+            repoId={repo.id}
+            onAssign={(repoId, prNumber, assigneeId) => {
+              api.assignPr(repoId, prNumber, assigneeId).then(() => {
+                qc.invalidateQueries({ queryKey: ['pulls', repo?.id] });
+              });
+            }}
           />
         )}
       </div>

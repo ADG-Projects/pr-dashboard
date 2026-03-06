@@ -4,20 +4,58 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+# ── Spaces ───────────────────────────────────────────────────
+
+
+class SpaceToggle(BaseModel):
+    is_active: bool
+
+
+class SpaceOut(BaseModel):
+    id: int
+    name: str
+    slug: str
+    space_type: str
+    base_url: str
+    is_active: bool
+    has_token: bool
+    created_at: datetime
+    github_account_id: int | None = None
+    github_account_login: str | None = None
+
+
+class GitHubAccountCreate(BaseModel):
+    token: str
+    base_url: str = "https://api.github.com"
+
+
+class AddSpaceRequest(BaseModel):
+    slug: str  # org login or username
+    space_type: str = "org"  # "org" or "user"
+    name: str | None = None  # display name, defaults to slug
+
+
+class GitHubAccountOut(BaseModel):
+    id: int
+    login: str
+    avatar_url: str | None
+    base_url: str
+    has_token: bool
+    created_at: datetime
+    last_login_at: datetime
+
+
 # ── Repos ────────────────────────────────────────────────────
 
 
 class RepoCreate(BaseModel):
     owner: str = ""
     name: str
+    space_id: int | None = None
 
 
-class AvailableRepo(BaseModel):
-    name: str
-    full_name: str
-    description: str | None = None
-    private: bool = False
-    pushed_at: str | None = None
+class RepoVisibilityUpdate(BaseModel):
+    visibility: str  # "private" or "shared"
 
 
 class RepoSummary(BaseModel):
@@ -32,6 +70,10 @@ class RepoSummary(BaseModel):
     failing_ci_count: int = 0
     stale_pr_count: int = 0
     stack_count: int = 0
+    space_id: int | None = None
+    space_name: str | None = None
+    visibility: str = "private"
+    user_id: int | None = None
 
 
 class RepoDetail(BaseModel):
@@ -43,6 +85,9 @@ class RepoDetail(BaseModel):
     default_branch: str
     last_synced_at: datetime | None
     created_at: datetime
+    space_id: int | None = None
+    visibility: str = "private"
+    user_id: int | None = None
 
 
 # ── Pull Requests ────────────────────────────────────────────
@@ -110,27 +155,18 @@ class StackOut(BaseModel):
     members: list[StackMemberOut] = []
 
 
-# ── Team ─────────────────────────────────────────────────────
+# ── Users (from GitHub OAuth) ────────────────────────────────
 
 
-class TeamMemberCreate(BaseModel):
-    display_name: str
-    github_login: str | None = None
-    email: str | None = None
-
-
-class TeamMemberUpdate(BaseModel):
-    display_name: str | None = None
-    github_login: str | None = None
-    email: str | None = None
+class UserUpdate(BaseModel):
     is_active: bool | None = None
 
 
-class TeamMemberOut(BaseModel):
+class UserOut(BaseModel):
     id: int
-    display_name: str
-    github_login: str | None
-    email: str | None
+    login: str
+    name: str | None
+    avatar_url: str | None
     is_active: bool
     created_at: datetime
 
@@ -139,7 +175,7 @@ class TeamMemberOut(BaseModel):
 
 
 class ProgressUpdate(BaseModel):
-    team_member_id: int
+    user_id: int
     reviewed: bool | None = None
     approved: bool | None = None
     notes: str | None = None
@@ -148,8 +184,8 @@ class ProgressUpdate(BaseModel):
 class ProgressOut(BaseModel):
     id: int
     pull_request_id: int
-    team_member_id: int
-    team_member_name: str = ""
+    user_id: int
+    user_name: str = ""
     reviewed: bool
     approved: bool
     notes: str | None
@@ -176,7 +212,6 @@ class AssigneeUpdate(BaseModel):
     assignee_id: int | None = None
 
 
-
 # ── Auth ─────────────────────────────────────────────────────
 
 
@@ -187,3 +222,5 @@ class LoginRequest(BaseModel):
 class AuthStatus(BaseModel):
     authenticated: bool
     auth_enabled: bool
+    oauth_configured: bool = False
+    user: dict | None = None

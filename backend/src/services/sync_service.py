@@ -6,9 +6,11 @@ from datetime import UTC, datetime
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.db.engine import async_session_factory
-from src.models.tables import CheckRun, PullRequest, Review, TrackedRepo
+from src.models.tables import CheckRun, PullRequest, Review, Space, TrackedRepo
+from src.services.crypto import decrypt_token
 from src.services.events import broadcast_event
 from src.services.github_client import GitHubClient, parse_gh_datetime
 from src.services.stack_detector import detect_stacks
@@ -19,7 +21,6 @@ class SyncService:
 
     def __init__(self, interval_seconds: int = 180) -> None:
         self.interval = interval_seconds
-        self.github = GitHubClient()
         self._task: asyncio.Task[None] | None = None
         self._running = False
 
@@ -38,7 +39,6 @@ class SyncService:
                 await self._task
             except asyncio.CancelledError:
                 pass
-        await self.github.close()
         logger.info("Sync service stopped")
 
     async def _loop(self) -> None:
@@ -50,83 +50,213 @@ class SyncService:
             await asyncio.sleep(self.interval)
 
     async def sync_all(self) -> None:
-        """Run one full sync cycle across all tracked repos."""
+        """Run one full sync cycle across all tracked repos, grouped by space."""
         async with async_session_factory() as session:
-            repos = (
-                (await session.execute(select(TrackedRepo).where(TrackedRepo.is_active.is_(True))))
+            spaces = (
+                (
+                    await session.execute(
+                        select(Space)
+                        .options(selectinload(Space.github_account))
+                        .where(Space.is_active.is_(True))
+                    )
+                )
                 .scalars()
                 .all()
             )
 
-        for repo in repos:
+        for space in spaces:
+            account = space.github_account
+            if not account or not account.encrypted_token:
+                logger.warning(f"Space '{space.name}' has no linked account/token, skipping")
+                continue
+            token = decrypt_token(account.encrypted_token)
+            gh = GitHubClient(token=token, base_url=account.base_url)
             try:
-                await self.sync_repo(repo.id, repo.owner, repo.name)
-            except Exception:
-                logger.exception(f"Failed to sync {repo.full_name}")
+                async with async_session_factory() as session:
+                    repos = (
+                        (
+                            await session.execute(
+                                select(TrackedRepo).where(
+                                    TrackedRepo.is_active.is_(True),
+                                    TrackedRepo.space_id == space.id,
+                                )
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
 
-    async def sync_repo(self, repo_id: int, owner: str, name: str) -> None:
+                for repo in repos:
+                    try:
+                        await self.sync_repo(repo.id, repo.owner, repo.name, gh)
+                    except Exception:
+                        logger.exception(f"Failed to sync {repo.full_name}")
+            finally:
+                await gh.close()
+
+        # Also sync repos without a space (legacy, using fallback token)
+        async with async_session_factory() as session:
+            orphan_repos = (
+                (
+                    await session.execute(
+                        select(TrackedRepo).where(
+                            TrackedRepo.is_active.is_(True),
+                            TrackedRepo.space_id.is_(None),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        if orphan_repos:
+            from src.config.settings import settings
+
+            if settings.github_token:
+                gh = GitHubClient(token=settings.github_token)
+                try:
+                    for repo in orphan_repos:
+                        try:
+                            await self.sync_repo(repo.id, repo.owner, repo.name, gh)
+                        except Exception:
+                            logger.exception(f"Failed to sync {repo.full_name}")
+                finally:
+                    await gh.close()
+
+    async def sync_repo(
+        self,
+        repo_id: int,
+        owner: str,
+        name: str,
+        github: GitHubClient | None = None,
+    ) -> None:
         """Sync all open PRs for a single repo."""
         logger.info(f"Syncing {owner}/{name}...")
         now = datetime.now(UTC)
 
-        gh_pulls = await self.github.list_open_pulls(owner, name)
-        logger.info(f"  Found {len(gh_pulls)} open PRs")
+        # Create a default client if none provided (for backward compat)
+        close_after = False
+        if github is None:
+            from src.config.settings import settings
 
-        async with async_session_factory() as session:
-            for gh_pr in gh_pulls:
-                pr = await self._upsert_pr(session, repo_id, gh_pr)
+            github = GitHubClient(token=settings.github_token)
+            close_after = True
 
-                # Fetch detailed data for each PR
-                try:
-                    detail = await self.github.get_pull(owner, name, gh_pr["number"])
-                    pr.additions = detail.get("additions", 0)
-                    pr.deletions = detail.get("deletions", 0)
-                    pr.changed_files = detail.get("changed_files", 0)
-                    pr.mergeable_state = detail.get("mergeable_state")
-                except Exception as exc:
-                    logger.warning(f"  Could not fetch detail for PR #{gh_pr['number']}: {exc}")
+        try:
+            gh_pulls = await github.list_open_pulls(owner, name)
+            logger.info(f"  Found {len(gh_pulls)} open PRs")
 
-                # Sync workflow runs (via Actions API)
-                try:
-                    runs = await self.github.get_workflow_runs(owner, name, gh_pr["head"]["sha"])
-                    checks = [
-                        {
-                            "name": r["name"],
-                            "status": r["status"],
-                            "conclusion": r.get("conclusion"),
-                            "details_url": r.get("html_url"),
-                        }
-                        for r in runs
-                    ]
-                    await self._upsert_check_runs(session, pr.id, checks)
-                except Exception as exc:
-                    logger.warning(
-                        f"  Could not fetch workflow runs for PR #{gh_pr['number']}: {exc}"
+            fetched_pr_numbers = {gh_pr["number"] for gh_pr in gh_pulls}
+
+            async with async_session_factory() as session:
+                for gh_pr in gh_pulls:
+                    pr = await self._upsert_pr(session, repo_id, gh_pr)
+
+                    # Fetch detail, workflow runs, and reviews in parallel
+                    detail_result, runs_result, reviews_result = await asyncio.gather(
+                        github.get_pull(owner, name, gh_pr["number"]),
+                        github.get_workflow_runs(owner, name, gh_pr["head"]["sha"]),
+                        github.get_reviews(owner, name, gh_pr["number"]),
+                        return_exceptions=True,
                     )
 
-                # Sync reviews
-                try:
-                    reviews = await self.github.get_reviews(owner, name, gh_pr["number"])
-                    await self._upsert_reviews(session, pr.id, reviews)
-                except Exception as exc:
-                    logger.warning(f"  Could not fetch reviews for PR #{gh_pr['number']}: {exc}")
+                    if isinstance(detail_result, Exception):
+                        logger.warning(
+                            f"  Could not fetch detail for PR #{gh_pr['number']}: {detail_result}"
+                        )
+                    else:
+                        pr.additions = detail_result.get("additions", 0)
+                        pr.deletions = detail_result.get("deletions", 0)
+                        pr.changed_files = detail_result.get("changed_files", 0)
+                        pr.mergeable_state = detail_result.get("mergeable_state")
 
-            # Update repo last_synced_at
-            repo = await session.get(TrackedRepo, repo_id)
-            if repo:
-                repo.last_synced_at = now
+                    if isinstance(runs_result, Exception):
+                        logger.warning(
+                            f"  Could not fetch workflow runs for PR #{gh_pr['number']}: "
+                            f"{runs_result}"
+                        )
+                    else:
+                        checks = [
+                            {
+                                "name": r["name"],
+                                "status": r["status"],
+                                "conclusion": r.get("conclusion"),
+                                "details_url": r.get("html_url"),
+                            }
+                            for r in runs_result
+                        ]
+                        await self._upsert_check_runs(session, pr.id, checks)
 
-            await session.commit()
+                    if isinstance(reviews_result, Exception):
+                        logger.warning(
+                            f"  Could not fetch reviews for PR #{gh_pr['number']}: {reviews_result}"
+                        )
+                    else:
+                        await self._upsert_reviews(session, pr.id, reviews_result)
 
-        # Run stack detection in a separate session
-        async with async_session_factory() as session:
-            stacks = await detect_stacks(session, repo_id)
-            await session.commit()
-            if stacks:
-                logger.info(f"  Detected {len(stacks)} stack(s) for {owner}/{name}")
+                # Detect stale PRs: open in DB but not returned by GitHub
+                db_open_prs = (
+                    (
+                        await session.execute(
+                            select(PullRequest).where(
+                                PullRequest.repo_id == repo_id,
+                                PullRequest.state == "open",
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                stale_prs = [pr for pr in db_open_prs if pr.number not in fetched_pr_numbers]
 
-        await broadcast_event("sync_complete", {"repo_id": repo_id, "owner": owner, "name": name})
-        logger.info(f"  Sync complete for {owner}/{name}")
+                if stale_prs:
+                    logger.info(f"  Updating {len(stale_prs)} stale PR(s) for {owner}/{name}")
+                    sem = asyncio.Semaphore(5)
+
+                    async def fetch_stale(pr_number: int) -> dict | None:
+                        async with sem:
+                            try:
+                                return await github.get_pull(owner, name, pr_number)
+                            except Exception as exc:
+                                logger.warning(
+                                    f"  Could not fetch stale PR #{pr_number}: {exc}"
+                                )
+                                return None
+
+                    stale_details = await asyncio.gather(
+                        *(fetch_stale(pr.number) for pr in stale_prs)
+                    )
+
+                    for pr, detail in zip(stale_prs, stale_details, strict=True):
+                        if detail is None:
+                            continue
+                        pr.state = detail["state"]
+                        pr.merged_at = parse_gh_datetime(detail.get("merged_at"))
+                        pr.updated_at = (
+                            parse_gh_datetime(detail.get("updated_at")) or datetime.now(UTC)
+                        )
+                        pr.last_synced_at = datetime.now(UTC)
+
+                repo = await session.get(TrackedRepo, repo_id)
+                if repo:
+                    repo.last_synced_at = now
+
+                await session.commit()
+
+            async with async_session_factory() as session:
+                stacks = await detect_stacks(session, repo_id)
+                await session.commit()
+                if stacks:
+                    logger.info(f"  Detected {len(stacks)} stack(s) for {owner}/{name}")
+
+            await broadcast_event(
+                "sync_complete",
+                {"repo_id": repo_id, "owner": owner, "name": name},
+            )
+            logger.info(f"  Sync complete for {owner}/{name}")
+        finally:
+            if close_after:
+                await github.close()
 
     async def _upsert_pr(self, session: AsyncSession, repo_id: int, gh_pr: dict) -> PullRequest:
         """Insert or update a pull request from GitHub data."""
@@ -177,8 +307,7 @@ class SyncService:
     async def _upsert_check_runs(
         self, session: AsyncSession, pr_id: int, checks: list[dict]
     ) -> None:
-        """Replace check runs for a PR (simpler than individual upsert)."""
-        # Delete existing checks for this PR
+        """Replace check runs for a PR."""
         existing = (
             (await session.execute(select(CheckRun).where(CheckRun.pull_request_id == pr_id)))
             .scalars()

@@ -7,8 +7,9 @@ from src.models.tables import (
     PullRequest,
     QualitySnapshot,
     Review,
-    TeamMember,
+    Space,
     TrackedRepo,
+    User,
     UserProgress,
 )
 
@@ -19,7 +20,8 @@ __all__ = [
     "PullRequest",
     "QualitySnapshot",
     "Review",
-    "TeamMember",
+    "Space",
     "TrackedRepo",
+    "User",
     "UserProgress",
 ]

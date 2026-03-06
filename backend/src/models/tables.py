@@ -17,6 +17,68 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.db.base import Base
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    github_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
+    login: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(255))
+    avatar_url: Mapped[str | None] = mapped_column(String(1024))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_login_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    progress: Mapped[list["UserProgress"]] = relationship(back_populates="user")
+    github_accounts: Mapped[list["GitHubAccount"]] = relationship(back_populates="user")
+
+
+class GitHubAccount(Base):
+    __tablename__ = "github_accounts"
+    __table_args__ = (UniqueConstraint("user_id", "github_id", name="uq_user_github_account"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    github_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    login: Mapped[str] = mapped_column(String(255), nullable=False)
+    avatar_url: Mapped[str | None] = mapped_column(String(1024))
+    encrypted_token: Mapped[str | None] = mapped_column(Text)
+    base_url: Mapped[str] = mapped_column(
+        String(1024), nullable=False, default="https://api.github.com"
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_login_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="github_accounts")
+    spaces: Mapped[list["Space"]] = relationship(back_populates="github_account")
+
+
+class Space(Base):
+    __tablename__ = "spaces"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(255), nullable=False)
+    space_type: Mapped[str] = mapped_column(String(20), nullable=False)  # "org" or "user"
+    github_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("github_accounts.id", ondelete="SET NULL"), nullable=True
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    github_account: Mapped["GitHubAccount | None"] = relationship(back_populates="spaces")
+    user: Mapped["User | None"] = relationship(foreign_keys=[user_id])
+    repos: Mapped[list["TrackedRepo"]] = relationship(back_populates="space")
+
+
 class TrackedRepo(Base):
     __tablename__ = "tracked_repos"
 
@@ -28,7 +90,16 @@ class TrackedRepo(Base):
     default_branch: Mapped[str] = mapped_column(String(255), default="main")
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    space_id: Mapped[int | None] = mapped_column(
+        ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    visibility: Mapped[str] = mapped_column(String(20), nullable=False, server_default="private")
 
+    space: Mapped["Space | None"] = relationship(back_populates="repos")
+    user: Mapped["User | None"] = relationship(foreign_keys=[user_id])
     pull_requests: Mapped[list["PullRequest"]] = relationship(back_populates="repo")
     stacks: Mapped[list["PRStack"]] = relationship(back_populates="repo")
 
@@ -71,9 +142,9 @@ class PullRequest(Base):
         foreign_keys="PRStackMembership.pull_request_id",
     )
     assignee_id: Mapped[int | None] = mapped_column(
-        ForeignKey("team_members.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    assignee: Mapped["TeamMember | None"] = relationship(foreign_keys=[assignee_id])
+    assignee: Mapped["User | None"] = relationship(foreign_keys=[assignee_id])
     user_progress: Mapped[list["UserProgress"]] = relationship(
         back_populates="pull_request", cascade="all, delete-orphan"
     )
@@ -145,28 +216,13 @@ class PRStackMembership(Base):
     parent_pr: Mapped["PullRequest | None"] = relationship(foreign_keys=[parent_pr_id])
 
 
-class TeamMember(Base):
-    __tablename__ = "team_members"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    github_login: Mapped[str | None] = mapped_column(String(255))
-    email: Mapped[str | None] = mapped_column(String(255))
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    progress: Mapped[list["UserProgress"]] = relationship(back_populates="team_member")
-
-
 class UserProgress(Base):
     __tablename__ = "user_progress"
-    __table_args__ = (
-        UniqueConstraint("pull_request_id", "team_member_id", name="uq_pr_member_progress"),
-    )
+    __table_args__ = (UniqueConstraint("pull_request_id", "user_id", name="uq_pr_user_progress"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     pull_request_id: Mapped[int] = mapped_column(ForeignKey("pull_requests.id", ondelete="CASCADE"))
-    team_member_id: Mapped[int] = mapped_column(ForeignKey("team_members.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
     approved: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str | None] = mapped_column(Text)
@@ -175,7 +231,7 @@ class UserProgress(Base):
     )
 
     pull_request: Mapped["PullRequest"] = relationship(back_populates="user_progress")
-    team_member: Mapped["TeamMember"] = relationship(back_populates="progress")
+    user: Mapped["User"] = relationship(back_populates="progress")
 
 
 class QualitySnapshot(Base):

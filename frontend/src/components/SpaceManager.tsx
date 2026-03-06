@@ -68,6 +68,10 @@ export function SpaceManager({ onClose }: Props) {
       orphanSpaces.push(space);
     }
   }
+  // Sort spaces alphabetically within each account for stable ordering
+  const sortSpaces = (a: Space, b: Space) => a.name.localeCompare(b.name);
+  for (const list of spacesByAccount.values()) list.sort(sortSpaces);
+  orphanSpaces.sort(sortSpaces);
 
   function handleSignIn() {
     window.location.href = '/api/auth/github';

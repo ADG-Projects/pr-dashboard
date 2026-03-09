@@ -222,6 +222,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
   }, [highlightedPrIds, dimReviewerLogin, dimAuthor]);
 
   function reviewBorderClass(pr: PRSummary): string {
+    if (pr.merged_at) return styles.borderMerged;
     if (pr.review_state === 'approved' && !pr.rebased_since_approval) return styles.borderApproved;
     if (pr.review_state === 'approved' && pr.rebased_since_approval) return styles.borderRebased;
     if (pr.review_state === 'changes_requested') return styles.borderChanges;
@@ -244,6 +245,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
           </a>
           {pr.author && <span className={styles.cardAuthor}>{pr.author}</span>}
           {pr.draft && <Tooltip text="Draft PR — not ready for merge" position="top"><span className={styles.draftBadge}>Draft</span></Tooltip>}
+          {pr.merged_at && <Tooltip text={`Merged ${new Date(pr.merged_at).toLocaleDateString()}`} position="top"><span className={styles.mergedBadge}>Merged</span></Tooltip>}
         </div>
         <div className={styles.cardTitle}>{pr.title}</div>
         <div className={styles.cardReviewers}>

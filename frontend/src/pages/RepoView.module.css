@@ -102,12 +102,12 @@
   to { transform: rotate(360deg); }
 }
 
-/* Reviewer filter dropdown */
-.reviewerDropdown {
+/* Custom filter dropdowns */
+.filterDropdown {
   position: relative;
 }
 
-.reviewerTrigger {
+.filterTrigger {
   background: var(--bg-input);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
@@ -122,28 +122,28 @@
   gap: 0.4rem;
   white-space: nowrap;
 }
-.reviewerTrigger:hover { border-color: var(--accent-blue); }
+.filterTrigger:hover { border-color: var(--accent-blue); }
 
-.reviewerOption {
+.filterOption {
   display: flex;
   align-items: center;
   gap: 0.35rem;
 }
 
-.reviewerAvatar {
+.filterAvatar {
   width: 18px;
   height: 18px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.reviewerChevron {
+.filterChevron {
   color: var(--text-dim);
   font-size: 0.65rem;
   flex-shrink: 0;
 }
 
-.reviewerMenu {
+.filterMenu {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
@@ -157,7 +157,7 @@
   overflow-y: auto;
 }
 
-.reviewerMenuItem {
+.filterMenuItem {
   display: flex;
   align-items: center;
   gap: 0.4rem;
@@ -167,11 +167,11 @@
   color: var(--text-primary);
   white-space: nowrap;
 }
-.reviewerMenuItem:hover {
+.filterMenuItem:hover {
   background: var(--bg-input);
 }
 
-.reviewerMenuItemActive {
+.filterMenuItemActive {
   background: var(--bg-input);
   font-weight: 600;
 }

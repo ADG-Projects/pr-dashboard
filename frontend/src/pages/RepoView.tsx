@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useRef, useState, useEffect } from 'react';
-import { api, type PRSummary, type RepoSummary, type User } from '../api/client';
+import { api, type PRSummary, type RepoSummary, type Space, type User } from '../api/client';
 import { DependencyGraph } from '../components/DependencyGraph';
 import { PRDetailPanel } from '../components/PRDetailPanel';
 import { Tooltip } from '../components/Tooltip';
@@ -20,14 +20,25 @@ export function RepoView() {
   const [ciFilter, setCiFilter] = useState('');
   const [stackFilter, setStackFilter] = useState<number | null>(null);
   const [reviewerFilter, setReviewerFilter] = useState('');
+  const [stateFilter, setStateFilter] = useState('open');
   const [renamingStack, setRenamingStack] = useState(false);
   const [renameValue, setRenameValue] = useState('');
+  const [authorDropdownOpen, setAuthorDropdownOpen] = useState(false);
+  const [stateDropdownOpen, setStateDropdownOpen] = useState(false);
   const [reviewerDropdownOpen, setReviewerDropdownOpen] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const authorDropdownRef = useRef<HTMLDivElement>(null);
+  const stateDropdownRef = useRef<HTMLDivElement>(null);
   const reviewerDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
+      if (authorDropdownRef.current && !authorDropdownRef.current.contains(e.target as Node)) {
+        setAuthorDropdownOpen(false);
+      }
+      if (stateDropdownRef.current && !stateDropdownRef.current.contains(e.target as Node)) {
+        setStateDropdownOpen(false);
+      }
       if (reviewerDropdownRef.current && !reviewerDropdownRef.current.contains(e.target as Node)) {
         setReviewerDropdownOpen(false);
       }
@@ -57,9 +68,10 @@ export function RepoView() {
     }
   }, [repos, repo, navigate]);
 
+  const pullParams = stateFilter === 'merged' ? { include_merged_days: '7' } : undefined;
   const { data: pulls, isLoading } = useQuery({
-    queryKey: ['pulls', repo?.id],
-    queryFn: () => api.listPulls(repo!.id),
+    queryKey: ['pulls', repo?.id, stateFilter],
+    queryFn: () => api.listPulls(repo!.id, pullParams),
     enabled: !!repo,
     refetchInterval: 30_000,
   });
@@ -75,6 +87,29 @@ export function RepoView() {
     queryFn: api.listTeam,
   });
   const activeTeam = team?.filter((m: User) => m.is_active) || [];
+
+  const { data: spaces } = useQuery({
+    queryKey: ['spaces'],
+    queryFn: api.listSpaces,
+  });
+
+  // Resolve the repo's space slug for linked account lookups
+  const repoSpaceSlug = (() => {
+    if (!repo?.space_id || !spaces) return null;
+    return spaces.find((s: Space) => s.id === repo.space_id)?.slug ?? null;
+  })();
+
+  // Resolve a team member's display info for the current repo's space.
+  // If they have a linked account for this space, prefer that identity.
+  const resolveUser = (user: User): { login: string; avatar: string | null } => {
+    if (repoSpaceSlug) {
+      const match = user.linked_accounts.find((a) =>
+        a.space_slugs.includes(repoSpaceSlug),
+      );
+      if (match) return { login: match.login, avatar: match.avatar_url };
+    }
+    return { login: user.login, avatar: user.avatar_url };
+  };
 
   const renameMutation = useMutation({
     mutationFn: ({ stackId, name }: { stackId: number; name: string }) =>
@@ -94,12 +129,44 @@ export function RepoView() {
     },
   });
 
-  // Filter PRs (CI is a hard filter; author dims cards like the original dashboard)
+  // Hard filters: CI and state; author/reviewer dim cards
   let filtered = pulls || [];
   if (ciFilter) filtered = filtered.filter((p: PRSummary) => p.ci_status === ciFilter);
+  if (stateFilter === 'open') filtered = filtered.filter((p: PRSummary) => p.state === 'open');
+  else if (stateFilter === 'needs_review') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.review_state === 'none' && !p.draft);
+  else if (stateFilter === 'reviewed') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.review_state === 'reviewed');
+  else if (stateFilter === 'approved') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.review_state === 'approved');
+  else if (stateFilter === 'changes_requested') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.review_state === 'changes_requested');
+  else if (stateFilter === 'draft') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.draft);
+  else if (stateFilter === 'merged') filtered = filtered.filter((p: PRSummary) => p.merged_at != null);
 
   // Unique authors for filter dropdown
   const authors = [...new Set(pulls?.map((p: PRSummary) => p.author) || [])].sort();
+
+  // Build GitHub login → { avatar, displayName } from team members + linked accounts.
+  // This maps PR author logins (GitHub identities) to display info.
+  const authorInfoMap = new Map<string, { avatar: string | null; displayName: string }>();
+  for (const m of activeTeam) {
+    const displayName = m.name || m.login;
+    // Add all linked account logins pointing to this user's display name
+    for (const acct of m.linked_accounts || []) {
+      authorInfoMap.set(acct.login, { avatar: acct.avatar_url, displayName });
+    }
+    // Also add the app-level login
+    if (!authorInfoMap.has(m.login)) {
+      authorInfoMap.set(m.login, { avatar: m.avatar_url, displayName });
+    }
+  }
+
+  const stateOptions = [
+    { value: 'open', label: 'All open' },
+    { value: 'needs_review', label: 'Needs review' },
+    { value: 'reviewed', label: 'Reviewed' },
+    { value: 'approved', label: 'Approved' },
+    { value: 'changes_requested', label: 'Changes requested' },
+    { value: 'draft', label: 'Draft' },
+    { value: 'merged', label: 'Recently merged' },
+  ];
 
   if (!repo) return <div className={styles.loading}>Loading...</div>;
 
@@ -134,10 +201,49 @@ export function RepoView() {
 
         <div className={styles.filters}>
           <Tooltip text="Dims non-matching PR cards" position="bottom">
-            <select value={authorFilter} onChange={(e) => setAuthorFilter(e.target.value)} className={styles.select}>
-              <option value="">All authors</option>
-              {authors.map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
+            <div className={styles.filterDropdown} ref={authorDropdownRef}>
+              <button
+                className={styles.filterTrigger}
+                onClick={() => setAuthorDropdownOpen(!authorDropdownOpen)}
+              >
+                {(() => {
+                  const info = authorFilter ? authorInfoMap.get(authorFilter) : null;
+                  if (authorFilter) {
+                    return (
+                      <span className={styles.filterOption}>
+                        {info?.avatar && <img src={info.avatar} alt={authorFilter} className={styles.filterAvatar} />}
+                        <span>{info?.displayName || authorFilter}</span>
+                      </span>
+                    );
+                  }
+                  return <span>All authors</span>;
+                })()}
+                <span className={styles.filterChevron}>{authorDropdownOpen ? '\u25B4' : '\u25BE'}</span>
+              </button>
+              {authorDropdownOpen && (
+                <div className={styles.filterMenu}>
+                  <div
+                    className={`${styles.filterMenuItem} ${!authorFilter ? styles.filterMenuItemActive : ''}`}
+                    onClick={() => { setAuthorFilter(''); setAuthorDropdownOpen(false); }}
+                  >
+                    <span>All authors</span>
+                  </div>
+                  {authors.map((a) => {
+                    const info = authorInfoMap.get(a);
+                    return (
+                      <div
+                        key={a}
+                        className={`${styles.filterMenuItem} ${authorFilter === a ? styles.filterMenuItemActive : ''}`}
+                        onClick={() => { setAuthorFilter(a); setAuthorDropdownOpen(false); }}
+                      >
+                        {info?.avatar && <img src={info.avatar} alt={a} className={styles.filterAvatar} />}
+                        <span>{info?.displayName || a}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </Tooltip>
           <Tooltip text="Hides non-matching PRs" position="bottom">
             <select value={ciFilter} onChange={(e) => setCiFilter(e.target.value)} className={styles.select}>
@@ -146,6 +252,30 @@ export function RepoView() {
               <option value="failure">Failing</option>
               <option value="pending">Pending</option>
             </select>
+          </Tooltip>
+          <Tooltip text="Filters PRs by review state or merged status" position="bottom">
+            <div className={styles.filterDropdown} ref={stateDropdownRef}>
+              <button
+                className={styles.filterTrigger}
+                onClick={() => setStateDropdownOpen(!stateDropdownOpen)}
+              >
+                <span>{stateOptions.find((o) => o.value === stateFilter)?.label ?? 'All open'}</span>
+                <span className={styles.filterChevron}>{stateDropdownOpen ? '\u25B4' : '\u25BE'}</span>
+              </button>
+              {stateDropdownOpen && (
+                <div className={styles.filterMenu}>
+                  {stateOptions.map((o) => (
+                    <div
+                      key={o.value}
+                      className={`${styles.filterMenuItem} ${stateFilter === o.value ? styles.filterMenuItemActive : ''}`}
+                      onClick={() => { setStateFilter(o.value); setStateDropdownOpen(false); }}
+                    >
+                      <span>{o.label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </Tooltip>
           <Tooltip text="Highlight a stack of dependent PRs" position="bottom">
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -202,43 +332,47 @@ export function RepoView() {
             </div>
           </Tooltip>
           <Tooltip text="Dims PRs not requesting this reviewer" position="bottom">
-            <div className={styles.reviewerDropdown} ref={reviewerDropdownRef}>
+            <div className={styles.filterDropdown} ref={reviewerDropdownRef}>
               <button
-                className={styles.reviewerTrigger}
+                className={styles.filterTrigger}
                 onClick={() => setReviewerDropdownOpen(!reviewerDropdownOpen)}
               >
                 {(() => {
-                  const selected = activeTeam.find((m: User) => m.login === reviewerFilter);
+                  const selected = activeTeam.find((m: User) => resolveUser(m).login === reviewerFilter);
                   if (selected) {
+                    const r = resolveUser(selected);
                     return (
-                      <span className={styles.reviewerOption}>
-                        {selected.avatar_url && <img src={selected.avatar_url} alt={selected.login} className={styles.reviewerAvatar} />}
-                        <span>{selected.name || selected.login}</span>
+                      <span className={styles.filterOption}>
+                        {r.avatar && <img src={r.avatar} alt={r.login} className={styles.filterAvatar} />}
+                        <span>{selected.name || r.login}</span>
                       </span>
                     );
                   }
                   return <span>All reviewers</span>;
                 })()}
-                <span className={styles.reviewerChevron}>{reviewerDropdownOpen ? '\u25B4' : '\u25BE'}</span>
+                <span className={styles.filterChevron}>{reviewerDropdownOpen ? '\u25B4' : '\u25BE'}</span>
               </button>
               {reviewerDropdownOpen && (
-                <div className={styles.reviewerMenu}>
+                <div className={styles.filterMenu}>
                   <div
-                    className={`${styles.reviewerMenuItem} ${!reviewerFilter ? styles.reviewerMenuItemActive : ''}`}
+                    className={`${styles.filterMenuItem} ${!reviewerFilter ? styles.filterMenuItemActive : ''}`}
                     onClick={() => { setReviewerFilter(''); setReviewerDropdownOpen(false); }}
                   >
                     <span>All reviewers</span>
                   </div>
-                  {activeTeam.map((m: User) => (
-                    <div
-                      key={m.id}
-                      className={`${styles.reviewerMenuItem} ${reviewerFilter === m.login ? styles.reviewerMenuItemActive : ''}`}
-                      onClick={() => { setReviewerFilter(m.login); setReviewerDropdownOpen(false); }}
-                    >
-                      {m.avatar_url && <img src={m.avatar_url} alt={m.login} className={styles.reviewerAvatar} />}
-                      <span>{m.name || m.login}</span>
-                    </div>
-                  ))}
+                  {activeTeam.map((m: User) => {
+                    const r = resolveUser(m);
+                    return (
+                      <div
+                        key={m.id}
+                        className={`${styles.filterMenuItem} ${reviewerFilter === r.login ? styles.filterMenuItemActive : ''}`}
+                        onClick={() => { setReviewerFilter(r.login); setReviewerDropdownOpen(false); }}
+                      >
+                        {r.avatar && <img src={r.avatar} alt={r.login} className={styles.filterAvatar} />}
+                        <span>{m.name || r.login}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

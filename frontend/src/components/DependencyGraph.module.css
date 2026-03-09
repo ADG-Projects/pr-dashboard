@@ -95,6 +95,17 @@
   margin-left: auto;
 }
 
+.mergedBadge {
+  font-size: 0.48rem;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #8b5cf6;
+  color: #fff;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-left: auto;
+}
+
 .cardTitle {
   font-size: 0.68rem;
   color: var(--text-secondary);
@@ -224,6 +235,10 @@
 .borderReviewed {
   border-color: var(--review-commented-border);
   background: var(--review-commented-bg);
+}
+.borderMerged {
+  border-color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.06);
 }
 
 .badgeWarn {

@@ -55,8 +55,10 @@ class Settings(BaseSettings):
         default="", description="GitHub OAuth App client secret"
     )
 
-    # Frontend URL (for OAuth redirect in dev; empty = same origin)
-    frontend_url: str = Field(default="", description="Frontend URL for redirects (dev only)")
+    # Frontend URL (for OAuth redirect; defaults to Vite dev server, override in production)
+    frontend_url: str = Field(
+        default="http://localhost:5173", description="Frontend URL for redirects"
+    )
 
     # Server
     host: str = Field(default="0.0.0.0", description="Server bind host")

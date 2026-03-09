@@ -49,6 +49,18 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
   });
   const activeTeam = team?.filter((m) => m.is_active) || [];
 
+  // Build login → display name map from team data
+  const nameMap = new Map<string, string>();
+  for (const m of (team || [])) {
+    const displayName = m.name || m.login;
+    for (const acct of m.linked_accounts || []) {
+      nameMap.set(acct.login, displayName);
+    }
+    if (!nameMap.has(m.login)) {
+      nameMap.set(m.login, displayName);
+    }
+  }
+
   const { data: repos } = useQuery({
     queryKey: ['repos'],
     queryFn: () => api.listRepos(),
@@ -177,7 +189,7 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
                         className={styles.ghReviewerAvatar}
                       />
                     )}
-                    <span className={styles.ghReviewerLogin}>{r.login}</span>
+                    <span className={styles.ghReviewerLogin}>{nameMap.get(r.login) || r.login}</span>
                     <button
                       className={styles.removeReviewerBtn}
                       onClick={() => removeReviewerMutation.mutate(r.login)}
@@ -285,7 +297,7 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
                 {pr.reviews.map((r) => (
                   <div key={r.id} className={styles.reviewItem}>
                     <StatusDot status={r.state.toLowerCase()} size={7} />
-                    <span className={styles.reviewer}>{r.reviewer}</span>
+                    <span className={styles.reviewer}>{nameMap.get(r.reviewer) || r.reviewer}</span>
                     <span className={`${styles.reviewState} ${r.state === 'APPROVED' ? styles.reviewApproved : r.state === 'CHANGES_REQUESTED' ? styles.reviewChanges : styles.reviewCommented}`}>{r.state}</span>
                   </div>
                 ))}

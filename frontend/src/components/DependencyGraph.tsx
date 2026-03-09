@@ -19,6 +19,7 @@ interface Props {
   dimAuthor: string | null;
   selectedPrId: number | null;
   onSelectPr: (id: number | null) => void;
+  nameMap?: Map<string, { avatar: string | null; displayName: string }>;
 }
 
 const CARD_W = 210;
@@ -39,7 +40,7 @@ interface Arrow {
   dimmed: boolean;
 }
 
-export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogin, dimAuthor, selectedPrId, onSelectPr }: Props) {
+export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogin, dimAuthor, selectedPrId, onSelectPr, nameMap }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Build highlighted PR set
   const highlightedPrIds = useMemo(() => {
@@ -221,7 +222,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
           >
             #{pr.number}
           </a>
-          {pr.author && <span className={styles.cardAuthor}>{pr.author}</span>}
+          {pr.author && <span className={styles.cardAuthor}>{nameMap?.get(pr.author)?.displayName || pr.author}</span>}
           {pr.manual_priority === 'high' && <Tooltip text="High priority" position="top"><span className={styles.priorityHighBadge}>{'\u2191'}</span></Tooltip>}
           {pr.manual_priority === 'low' && <Tooltip text="Low priority" position="top"><span className={styles.priorityLowBadge}>{'\u2193'}</span></Tooltip>}
           {pr.draft && <Tooltip text="Draft PR — not ready for merge" position="top"><span className={styles.draftBadge}>Draft</span></Tooltip>}
@@ -233,7 +234,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
             pr.github_requested_reviewers.map((r) => (
               <span key={r.login} className={styles.reviewerEntry}>
                 {r.avatar_url && <img src={r.avatar_url} alt={r.login} className={styles.reviewerAvatar} />}
-                <span className={styles.reviewerLogin}>{r.login}</span>
+                <span className={styles.reviewerLogin}>{nameMap?.get(r.login)?.displayName || r.login}</span>
               </span>
             ))
           ) : (

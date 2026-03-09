@@ -138,6 +138,10 @@ class GitHubClient:
         """Get repo metadata (for default_branch, etc.)."""
         return await self._get(f"/repos/{owner}/{repo}")
 
+    async def get_user(self, login: str) -> dict[str, Any]:
+        """Get a user's public profile (includes name, bio, etc.)."""
+        return await self._get(f"/users/{login}")
+
     async def get_rate_limit(self) -> dict[str, Any]:
         """Check current rate limit status."""
         return await self._get("/rate_limit")

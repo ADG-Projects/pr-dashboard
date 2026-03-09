@@ -407,6 +407,7 @@ export function RepoView() {
             dimAuthor={authorFilter || null}
             selectedPrId={selectedPrId}
             onSelectPr={selectPr}
+            nameMap={authorInfoMap}
           />
         )}
       </div>

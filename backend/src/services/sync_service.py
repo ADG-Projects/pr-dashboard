@@ -143,7 +143,7 @@ class SyncService:
 
             async with async_session_factory() as session:
                 for gh_pr in gh_pulls:
-                    pr = await self._upsert_pr(session, repo_id, gh_pr)
+                    pr = await self._upsert_pr(session, repo_id, gh_pr, gh_client=github)
 
                     # Fetch detail, workflow runs, and reviews in parallel
                     detail_result, runs_result, reviews_result = await asyncio.gather(
@@ -185,7 +185,7 @@ class SyncService:
                             f"  Could not fetch reviews for PR #{gh_pr['number']}: {reviews_result}"
                         )
                     else:
-                        await self._upsert_reviews(session, pr.id, reviews_result)
+                        await self._upsert_reviews(session, pr.id, reviews_result, gh_client=github)
 
                 # Detect stale PRs: open in DB but not returned by GitHub
                 db_open_prs = (
@@ -249,7 +249,13 @@ class SyncService:
             if close_after:
                 await github.close()
 
-    async def _upsert_pr(self, session: AsyncSession, repo_id: int, gh_pr: dict) -> PullRequest:
+    async def _upsert_pr(
+        self,
+        session: AsyncSession,
+        repo_id: int,
+        gh_pr: dict,
+        gh_client: GitHubClient | None = None,
+    ) -> PullRequest:
         """Insert or update a pull request from GitHub data."""
         result = await session.execute(
             select(PullRequest).where(
@@ -269,11 +275,25 @@ class SyncService:
             for r in (gh_pr.get("requested_reviewers") or [])
         ]
 
+        # Ensure PR author User exists with name
+        author_user = gh_pr.get("user", {})
+        if author_user.get("id"):
+            await self._find_or_create_user(
+                session,
+                author_user["id"],
+                author_user["login"],
+                author_user.get("avatar_url"),
+                author_user.get("name"),
+                gh_client=gh_client,
+            )
+
         # Auto-discover reviewer users
-        await self._ensure_reviewer_users(session, gh_pr.get("requested_reviewers") or [])
+        await self._ensure_reviewer_users(
+            session, gh_pr.get("requested_reviewers") or [], gh_client=gh_client
+        )
 
         # Resolve assignee from GitHub
-        assignee_id = await self._resolve_assignee(session, gh_pr)
+        assignee_id = await self._resolve_assignee(session, gh_pr, gh_client=gh_client)
 
         # Derive manual_priority from GitHub labels
         label_names = {lbl["name"] for lbl in (gh_pr.get("labels") or [])}
@@ -332,12 +352,16 @@ class SyncService:
         login: str,
         avatar_url: str | None = None,
         name: str | None = None,
+        gh_client: GitHubClient | None = None,
     ) -> User:
         """Find a User by github_id, checking linked GitHubAccounts first.
 
         If the github_id belongs to a GitHubAccount linked to an existing User
         (e.g. a second account added via OAuth), return that User instead of
         creating a duplicate.
+
+        When name is missing and gh_client is provided, fetches the user's
+        full name from the GitHub API.
         """
         # Check if this github_id is already linked as a GitHubAccount
         acct_result = await session.execute(
@@ -347,12 +371,18 @@ class SyncService:
         if acct:
             user = await session.get(User, acct.user_id)
             if user:
+                if not user.name and gh_client:
+                    name = await self._fetch_user_name(gh_client, login)
+                    if name:
+                        user.name = name
                 return user
 
         # Fall back to direct User.github_id lookup
         result = await session.execute(select(User).where(User.github_id == github_id))
         user = result.scalar_one_or_none()
         if user is None:
+            if not name and gh_client:
+                name = await self._fetch_user_name(gh_client, login)
             user = User(
                 github_id=github_id,
                 login=login,
@@ -366,9 +396,24 @@ class SyncService:
             user.login = login
             if avatar_url:
                 user.avatar_url = avatar_url
+            if not user.name and gh_client:
+                name = await self._fetch_user_name(gh_client, login)
+                if name:
+                    user.name = name
         return user
 
-    async def _resolve_assignee(self, session: AsyncSession, gh_pr: dict) -> int | None:
+    async def _fetch_user_name(self, gh_client: GitHubClient, login: str) -> str | None:
+        """Fetch a user's full name from the GitHub API, returning None on failure."""
+        try:
+            profile = await gh_client.get_user(login)
+            return profile.get("name")
+        except Exception:
+            logger.debug(f"Could not fetch profile for {login}")
+            return None
+
+    async def _resolve_assignee(
+        self, session: AsyncSession, gh_pr: dict, gh_client: GitHubClient | None = None
+    ) -> int | None:
         """Resolve GitHub assignee to a local User id."""
         assignees = gh_pr.get("assignees") or []
         if not assignees:
@@ -387,10 +432,13 @@ class SyncService:
             gh_assignee["login"],
             gh_assignee.get("avatar_url"),
             gh_assignee.get("name"),
+            gh_client=gh_client,
         )
         return user.id
 
-    async def _ensure_reviewer_users(self, session: AsyncSession, gh_reviewers: list[dict]) -> None:
+    async def _ensure_reviewer_users(
+        self, session: AsyncSession, gh_reviewers: list[dict], gh_client: GitHubClient | None = None
+    ) -> None:
         """Upsert User rows for requested reviewers so they appear in team dropdowns."""
         for reviewer in gh_reviewers:
             github_id = reviewer.get("id")
@@ -402,6 +450,7 @@ class SyncService:
                 reviewer["login"],
                 reviewer.get("avatar_url"),
                 reviewer.get("name"),
+                gh_client=gh_client,
             )
 
     async def _upsert_check_runs(
@@ -429,7 +478,13 @@ class SyncService:
                 )
             )
 
-    async def _upsert_reviews(self, session: AsyncSession, pr_id: int, reviews: list[dict]) -> None:
+    async def _upsert_reviews(
+        self,
+        session: AsyncSession,
+        pr_id: int,
+        reviews: list[dict],
+        gh_client: GitHubClient | None = None,
+    ) -> None:
         """Replace reviews for a PR."""
         existing = (
             (await session.execute(select(Review).where(Review.pull_request_id == pr_id)))
@@ -443,6 +498,17 @@ class SyncService:
             submitted = parse_gh_datetime(review.get("submitted_at"))
             if not submitted:
                 continue
+            # Ensure reviewer User exists with name
+            reviewer_user = review.get("user", {})
+            if reviewer_user.get("id"):
+                await self._find_or_create_user(
+                    session,
+                    reviewer_user["id"],
+                    reviewer_user["login"],
+                    reviewer_user.get("avatar_url"),
+                    reviewer_user.get("name"),
+                    gh_client=gh_client,
+                )
             session.add(
                 Review(
                     pull_request_id=pr_id,

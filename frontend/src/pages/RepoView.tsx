@@ -27,10 +27,29 @@ export function RepoView() {
   const [authorDropdownOpen, setAuthorDropdownOpen] = useState(false);
   const [stateDropdownOpen, setStateDropdownOpen] = useState(false);
   const [reviewerDropdownOpen, setReviewerDropdownOpen] = useState(false);
+  const [ciDropdownOpen, setCiDropdownOpen] = useState(false);
+  const [priorityDropdownOpen, setPriorityDropdownOpen] = useState(false);
+  const [stackDropdownOpen, setStackDropdownOpen] = useState(false);
+  const [repoDropdownOpen, setRepoDropdownOpen] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const authorDropdownRef = useRef<HTMLDivElement>(null);
   const stateDropdownRef = useRef<HTMLDivElement>(null);
   const reviewerDropdownRef = useRef<HTMLDivElement>(null);
+  const ciDropdownRef = useRef<HTMLDivElement>(null);
+  const priorityDropdownRef = useRef<HTMLDivElement>(null);
+  const stackDropdownRef = useRef<HTMLDivElement>(null);
+  const repoDropdownRef = useRef<HTMLDivElement>(null);
+
+  const hasActiveFilters = authorFilter !== '' || ciFilter !== '' || stackFilter !== null || reviewerFilter !== '' || priorityFilter !== '' || stateFilter !== 'open';
+
+  const clearAllFilters = () => {
+    setAuthorFilter('');
+    setCiFilter('');
+    setStackFilter(null);
+    setReviewerFilter('');
+    setPriorityFilter('');
+    setStateFilter('open');
+  };
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -42,6 +61,18 @@ export function RepoView() {
       }
       if (reviewerDropdownRef.current && !reviewerDropdownRef.current.contains(e.target as Node)) {
         setReviewerDropdownOpen(false);
+      }
+      if (ciDropdownRef.current && !ciDropdownRef.current.contains(e.target as Node)) {
+        setCiDropdownOpen(false);
+      }
+      if (priorityDropdownRef.current && !priorityDropdownRef.current.contains(e.target as Node)) {
+        setPriorityDropdownOpen(false);
+      }
+      if (stackDropdownRef.current && !stackDropdownRef.current.contains(e.target as Node)) {
+        setStackDropdownOpen(false);
+      }
+      if (repoDropdownRef.current && !repoDropdownRef.current.contains(e.target as Node)) {
+        setRepoDropdownOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClick);
@@ -172,6 +203,30 @@ export function RepoView() {
     { value: 'merged', label: 'Recently merged' },
   ];
 
+  const ciOptions = [
+    { value: '', label: 'All CI' },
+    { value: 'success', label: 'Passing' },
+    { value: 'failure', label: 'Failing' },
+    { value: 'pending', label: 'Pending' },
+  ];
+
+  const priorityOptions = [
+    { value: '', label: 'All priorities' },
+    { value: 'high', label: 'High' },
+    { value: 'normal', label: 'Normal' },
+    { value: 'low', label: 'Low' },
+  ];
+
+  // Filter icons (14px inline SVGs)
+  const icons = {
+    state: <svg className={styles.filterIcon} viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="1.5"/><circle cx="8" cy="8" r="2.5"/></svg>,
+    author: <svg className={styles.filterIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M8 8a3 3 0 100-6 3 3 0 000 6zm-5 7a5 5 0 0110 0H3z"/></svg>,
+    reviewer: <svg className={styles.filterIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M8 3C4.5 3 1.7 5.1.5 8c1.2 2.9 4 5 7.5 5s6.3-2.1 7.5-5c-1.2-2.9-4-5-7.5-5zm0 8a3 3 0 110-6 3 3 0 010 6zm0-5a2 2 0 100 4 2 2 0 000-4z"/></svg>,
+    ci: <svg className={styles.filterIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm3.5 5.3l-4 4a.75.75 0 01-1.06 0l-2-2a.75.75 0 111.06-1.06L7 8.74l3.47-3.47a.75.75 0 011.06 1.06z"/></svg>,
+    priority: <svg className={styles.filterIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M3 14V2l5 4 5-4v12l-5-4-5 4z"/></svg>,
+    stack: <svg className={styles.filterIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L1 5l7 4 7-4-7-4zM1 8l7 4 7-4M1 11l7 4 7-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,
+  };
+
   if (!repo) return <div className={styles.loading}>Loading...</div>;
 
   return (
@@ -179,18 +234,32 @@ export function RepoView() {
       <div className={styles.content}>
         <div className={styles.titleRow}>
           <div className={styles.repoNav}>
-            <select
-              value={`${owner}/${name}`}
-              onChange={(e) => {
-                const [o, n] = e.target.value.split('/');
-                navigate(`/repos/${o}/${n}`);
-              }}
-              className={styles.repoSelect}
-            >
-              {(repos || []).map((r: RepoSummary) => (
-                <option key={r.id} value={r.full_name}>{r.full_name}</option>
-              ))}
-            </select>
+            <div className={styles.filterDropdown} ref={repoDropdownRef}>
+              <button
+                className={`${styles.filterTrigger} ${styles.repoTrigger}`}
+                onClick={() => setRepoDropdownOpen(!repoDropdownOpen)}
+              >
+                <span>{`${owner}/${name}`}</span>
+                <span className={styles.filterChevron}>{repoDropdownOpen ? '\u25B4' : '\u25BE'}</span>
+              </button>
+              {repoDropdownOpen && (
+                <div className={styles.filterMenu}>
+                  {(repos || []).map((r: RepoSummary) => (
+                    <div
+                      key={r.id}
+                      className={`${styles.filterMenuItem} ${r.full_name === `${owner}/${name}` ? styles.filterMenuItemActive : ''}`}
+                      onClick={() => {
+                        const [o, n] = r.full_name.split('/');
+                        navigate(`/repos/${o}/${n}`);
+                        setRepoDropdownOpen(false);
+                      }}
+                    >
+                      <span>{r.full_name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <Tooltip text="Fetch latest data from GitHub (auto-syncs every 3 min)" position="bottom">
             <button
@@ -204,12 +273,41 @@ export function RepoView() {
         </div>
 
         <div className={styles.filters}>
+          {/* 1. State */}
+          <Tooltip text="Filters PRs by review state or merged status" position="bottom">
+            <div className={styles.filterDropdown} ref={stateDropdownRef}>
+              <button
+                className={styles.filterTrigger}
+                onClick={() => setStateDropdownOpen(!stateDropdownOpen)}
+              >
+                {icons.state}
+                <span>{stateOptions.find((o) => o.value === stateFilter)?.label ?? 'All open'}</span>
+                <span className={styles.filterChevron}>{stateDropdownOpen ? '\u25B4' : '\u25BE'}</span>
+              </button>
+              {stateDropdownOpen && (
+                <div className={styles.filterMenu}>
+                  {stateOptions.map((o) => (
+                    <div
+                      key={o.value}
+                      className={`${styles.filterMenuItem} ${stateFilter === o.value ? styles.filterMenuItemActive : ''}`}
+                      onClick={() => { setStateFilter(o.value); setStateDropdownOpen(false); }}
+                    >
+                      <span>{o.label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Tooltip>
+
+          {/* 2. Author */}
           <Tooltip text="Dims non-matching PR cards" position="bottom">
             <div className={styles.filterDropdown} ref={authorDropdownRef}>
               <button
                 className={styles.filterTrigger}
                 onClick={() => setAuthorDropdownOpen(!authorDropdownOpen)}
               >
+                {icons.author}
                 {(() => {
                   const info = authorFilter ? authorInfoMap.get(authorFilter) : null;
                   if (authorFilter) {
@@ -249,106 +347,15 @@ export function RepoView() {
               )}
             </div>
           </Tooltip>
-          <Tooltip text="Hides non-matching PRs" position="bottom">
-            <select value={ciFilter} onChange={(e) => setCiFilter(e.target.value)} className={styles.select}>
-              <option value="">All CI</option>
-              <option value="success">Passing</option>
-              <option value="failure">Failing</option>
-              <option value="pending">Pending</option>
-            </select>
-          </Tooltip>
-          <Tooltip text="Filter PRs by manual priority" position="bottom">
-            <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className={styles.select}>
-              <option value="">All priorities</option>
-              <option value="high">High</option>
-              <option value="normal">Normal</option>
-              <option value="low">Low</option>
-            </select>
-          </Tooltip>
-          <Tooltip text="Filters PRs by review state or merged status" position="bottom">
-            <div className={styles.filterDropdown} ref={stateDropdownRef}>
-              <button
-                className={styles.filterTrigger}
-                onClick={() => setStateDropdownOpen(!stateDropdownOpen)}
-              >
-                <span>{stateOptions.find((o) => o.value === stateFilter)?.label ?? 'All open'}</span>
-                <span className={styles.filterChevron}>{stateDropdownOpen ? '\u25B4' : '\u25BE'}</span>
-              </button>
-              {stateDropdownOpen && (
-                <div className={styles.filterMenu}>
-                  {stateOptions.map((o) => (
-                    <div
-                      key={o.value}
-                      className={`${styles.filterMenuItem} ${stateFilter === o.value ? styles.filterMenuItemActive : ''}`}
-                      onClick={() => { setStateFilter(o.value); setStateDropdownOpen(false); }}
-                    >
-                      <span>{o.label}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </Tooltip>
-          <Tooltip text="Highlight a stack of dependent PRs" position="bottom">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              {renamingStack && stackFilter ? (
-                <input
-                  ref={renameInputRef}
-                  className={styles.select}
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && renameValue.trim()) {
-                      renameMutation.mutate({ stackId: stackFilter, name: renameValue.trim() });
-                    } else if (e.key === 'Escape') {
-                      setRenamingStack(false);
-                    }
-                  }}
-                  onBlur={() => {
-                    if (renameValue.trim() && stackFilter) {
-                      renameMutation.mutate({ stackId: stackFilter, name: renameValue.trim() });
-                    } else {
-                      setRenamingStack(false);
-                    }
-                  }}
-                  autoFocus
-                />
-              ) : (
-                <select
-                  value={stackFilter ?? ''}
-                  onChange={(e) => setStackFilter(e.target.value ? Number(e.target.value) : null)}
-                  className={styles.select}
-                >
-                  <option value="">All PRs</option>
-                  {(stacks || []).map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name || `Stack #${s.id}`} ({s.members.length} PRs)
-                    </option>
-                  ))}
-                </select>
-              )}
-              {stackFilter && !renamingStack && (
-                <button
-                  className={styles.syncBtn}
-                  style={{ padding: '2px 6px', fontSize: '0.85rem' }}
-                  title="Rename stack"
-                  onClick={() => {
-                    const selected = (stacks || []).find((s) => s.id === stackFilter);
-                    setRenameValue(selected?.name || '');
-                    setRenamingStack(true);
-                  }}
-                >
-                  ✏
-                </button>
-              )}
-            </div>
-          </Tooltip>
+
+          {/* 3. Reviewer */}
           <Tooltip text="Dims PRs not requesting this reviewer" position="bottom">
             <div className={styles.filterDropdown} ref={reviewerDropdownRef}>
               <button
                 className={styles.filterTrigger}
                 onClick={() => setReviewerDropdownOpen(!reviewerDropdownOpen)}
               >
+                {icons.reviewer}
                 {(() => {
                   const selected = activeTeam.find((m: User) => resolveUser(m).login === reviewerFilter);
                   if (selected) {
@@ -389,6 +396,141 @@ export function RepoView() {
               )}
             </div>
           </Tooltip>
+
+          {/* 4. CI */}
+          <Tooltip text="Hides non-matching PRs" position="bottom">
+            <div className={styles.filterDropdown} ref={ciDropdownRef}>
+              <button
+                className={styles.filterTrigger}
+                onClick={() => setCiDropdownOpen(!ciDropdownOpen)}
+              >
+                {icons.ci}
+                <span>{ciOptions.find((o) => o.value === ciFilter)?.label ?? 'All CI'}</span>
+                <span className={styles.filterChevron}>{ciDropdownOpen ? '\u25B4' : '\u25BE'}</span>
+              </button>
+              {ciDropdownOpen && (
+                <div className={styles.filterMenu}>
+                  {ciOptions.map((o) => (
+                    <div
+                      key={o.value}
+                      className={`${styles.filterMenuItem} ${ciFilter === o.value ? styles.filterMenuItemActive : ''}`}
+                      onClick={() => { setCiFilter(o.value); setCiDropdownOpen(false); }}
+                    >
+                      <span>{o.label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Tooltip>
+
+          {/* 5. Priority */}
+          <Tooltip text="Filter PRs by manual priority" position="bottom">
+            <div className={styles.filterDropdown} ref={priorityDropdownRef}>
+              <button
+                className={styles.filterTrigger}
+                onClick={() => setPriorityDropdownOpen(!priorityDropdownOpen)}
+              >
+                {icons.priority}
+                <span>{priorityOptions.find((o) => o.value === priorityFilter)?.label ?? 'All priorities'}</span>
+                <span className={styles.filterChevron}>{priorityDropdownOpen ? '\u25B4' : '\u25BE'}</span>
+              </button>
+              {priorityDropdownOpen && (
+                <div className={styles.filterMenu}>
+                  {priorityOptions.map((o) => (
+                    <div
+                      key={o.value}
+                      className={`${styles.filterMenuItem} ${priorityFilter === o.value ? styles.filterMenuItemActive : ''}`}
+                      onClick={() => { setPriorityFilter(o.value); setPriorityDropdownOpen(false); }}
+                    >
+                      <span>{o.label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Tooltip>
+
+          {/* 6. Stack */}
+          <Tooltip text="Highlight a stack of dependent PRs" position="bottom">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              {renamingStack && stackFilter ? (
+                <input
+                  ref={renameInputRef}
+                  className={styles.renameInput}
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && renameValue.trim()) {
+                      renameMutation.mutate({ stackId: stackFilter, name: renameValue.trim() });
+                    } else if (e.key === 'Escape') {
+                      setRenamingStack(false);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (renameValue.trim() && stackFilter) {
+                      renameMutation.mutate({ stackId: stackFilter, name: renameValue.trim() });
+                    } else {
+                      setRenamingStack(false);
+                    }
+                  }}
+                  autoFocus
+                />
+              ) : (
+                <div className={styles.filterDropdown} ref={stackDropdownRef}>
+                  <button
+                    className={styles.filterTrigger}
+                    onClick={() => setStackDropdownOpen(!stackDropdownOpen)}
+                  >
+                    {icons.stack}
+                    <span>{stackFilter ? ((stacks || []).find((s) => s.id === stackFilter)?.name || `Stack #${stackFilter}`) : 'All PRs'}</span>
+                    <span className={styles.filterChevron}>{stackDropdownOpen ? '\u25B4' : '\u25BE'}</span>
+                  </button>
+                  {stackDropdownOpen && (
+                    <div className={styles.filterMenu}>
+                      <div
+                        className={`${styles.filterMenuItem} ${stackFilter === null ? styles.filterMenuItemActive : ''}`}
+                        onClick={() => { setStackFilter(null); setStackDropdownOpen(false); }}
+                      >
+                        <span>All PRs</span>
+                      </div>
+                      {(stacks || []).map((s) => (
+                        <div
+                          key={s.id}
+                          className={`${styles.filterMenuItem} ${stackFilter === s.id ? styles.filterMenuItemActive : ''}`}
+                          onClick={() => { setStackFilter(s.id); setStackDropdownOpen(false); }}
+                        >
+                          <span>{s.name || `Stack #${s.id}`} ({s.members.length} PRs)</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {stackFilter && !renamingStack && (
+                <button
+                  className={styles.syncBtn}
+                  style={{ padding: '2px 6px', fontSize: '0.85rem' }}
+                  title="Rename stack"
+                  onClick={() => {
+                    const selected = (stacks || []).find((s) => s.id === stackFilter);
+                    setRenameValue(selected?.name || '');
+                    setRenamingStack(true);
+                  }}
+                >
+                  ✏
+                </button>
+              )}
+            </div>
+          </Tooltip>
+
+          {/* Clear all filters */}
+          {hasActiveFilters && (
+            <button className={styles.clearFilters} onClick={clearAllFilters} title="Reset all filters">
+              <svg className={styles.filterIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 01.708 0L8 7.293l2.646-2.647a.5.5 0 01.708.708L8.707 8l2.647 2.646a.5.5 0 01-.708.708L8 8.707l-2.646 2.647a.5.5 0 01-.708-.708L7.293 8 4.646 5.354a.5.5 0 010-.708z"/></svg>
+              Reset
+            </button>
+          )}
         </div>
 
         {!repo.last_synced_at ? (

@@ -1,7 +1,7 @@
 /** Prioritize view — cross-repo ranked list of open PRs by priority score. */
 
 import { useQuery } from '@tanstack/react-query';
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { api, type PrioritizedPR, type PriorityBreakdown, type RepoSummary } from '../api/client';
 import { PRDetailPanel } from '../components/PRDetailPanel';
 import { useStore } from '../store/useStore';
@@ -89,6 +89,18 @@ export function PrioritizeView() {
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [filterRepoId, setFilterRepoId] = useState<number | undefined>(undefined);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [repoDropdownOpen, setRepoDropdownOpen] = useState(false);
+  const repoDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (repoDropdownRef.current && !repoDropdownRef.current.contains(e.target as Node)) {
+        setRepoDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   const { data: repos } = useQuery({
     queryKey: ['repos'],
@@ -115,18 +127,39 @@ export function PrioritizeView() {
   return (
     <div className={styles.container}>
       <div className={styles.content}>
+        <div className={styles.titleRow}>
+          <div className={styles.filterDropdown} ref={repoDropdownRef}>
+            <button
+              className={`${styles.filterTrigger} ${styles.repoTrigger}`}
+              onClick={() => setRepoDropdownOpen(!repoDropdownOpen)}
+            >
+              <span>{filterRepoId ? (repos || []).find((r: RepoSummary) => r.id === filterRepoId)?.full_name ?? 'All repos' : 'All repos'}</span>
+              <span className={styles.filterChevron}>{repoDropdownOpen ? '\u25B4' : '\u25BE'}</span>
+            </button>
+            {repoDropdownOpen && (
+              <div className={styles.filterMenu}>
+                <div
+                  className={`${styles.filterMenuItem} ${filterRepoId === undefined ? styles.filterMenuItemActive : ''}`}
+                  onClick={() => { setFilterRepoId(undefined); setRepoDropdownOpen(false); }}
+                >
+                  <span>All repos</span>
+                </div>
+                {(repos || []).map((r: RepoSummary) => (
+                  <div
+                    key={r.id}
+                    className={`${styles.filterMenuItem} ${filterRepoId === r.id ? styles.filterMenuItemActive : ''}`}
+                    onClick={() => { setFilterRepoId(r.id); setRepoDropdownOpen(false); }}
+                  >
+                    <span>{r.full_name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className={styles.header}>
           <h2 className={styles.title}>Priority Queue</h2>
-          <select
-            className={styles.repoFilter}
-            value={filterRepoId ?? ''}
-            onChange={(e) => setFilterRepoId(e.target.value ? Number(e.target.value) : undefined)}
-          >
-            <option value="">All repos</option>
-            {(repos || []).map((r: RepoSummary) => (
-              <option key={r.id} value={r.id}>{r.full_name}</option>
-            ))}
-          </select>
           <div className={styles.summaryBar}>
             <span className={styles.summaryItem}>
               <span className={styles.summaryCount}>{prs.length}</span> open

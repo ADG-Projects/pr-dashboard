@@ -305,11 +305,13 @@ async def update_assignee(
     return _pr_to_summary(pr, membership.stack_id if membership else None)
 
 
-async def _resolve_login_for_repo(session: AsyncSession, user: User, repo: TrackedRepo) -> str:
-    """Resolve the correct GitHub login for a user in the context of a repo's space.
+async def _resolve_login_for_repo(
+    session: AsyncSession, user: User, repo: TrackedRepo
+) -> tuple[str, str | None]:
+    """Resolve the correct GitHub login and avatar for a user in the context of a repo's space.
 
     If the user has a GitHubAccount linked to a space with the same slug as
-    the repo's space, use that account's login. Otherwise fall back to User.login.
+    the repo's space, use that account's login and avatar. Otherwise fall back to User fields.
     """
     if repo.space_id:
         repo_space = await session.get(Space, repo.space_id)
@@ -325,8 +327,8 @@ async def _resolve_login_for_repo(session: AsyncSession, user: User, repo: Track
             )
             account = result.scalar_one_or_none()
             if account:
-                return account.login
-    return user.login
+                return account.login, account.avatar_url
+    return user.login, user.avatar_url
 
 
 @router.patch("/pulls/{number}/reviewers")
@@ -346,14 +348,14 @@ async def update_reviewers(
 
     gh, repo = await _get_github_client_for_pr(session, repo_id)
 
-    # Resolve user_ids → GitHub logins in the repo's context
-    add_logins: list[str] = []
+    # Resolve user_ids → GitHub logins + avatars in the repo's context
+    add_entries: list[tuple[str, str | None]] = []
     for uid in body.add_user_ids:
         user = await session.get(User, uid)
         if not user:
             raise HTTPException(status_code=404, detail=f"User {uid} not found")
-        login = await _resolve_login_for_repo(session, user, repo)
-        add_logins.append(login)
+        add_entries.append(await _resolve_login_for_repo(session, user, repo))
+    add_logins = [login for login, _ in add_entries]
 
     try:
         if add_logins:
@@ -371,9 +373,9 @@ async def update_reviewers(
     remove_set = set(body.remove_logins)
     current = [r for r in current if r.get("login") not in remove_set]
     existing_logins = {r.get("login") for r in current}
-    for login in add_logins:
+    for login, avatar_url in add_entries:
         if login not in existing_logins:
-            current.append({"login": login, "avatar_url": None, "github_id": None})
+            current.append({"login": login, "avatar_url": avatar_url, "github_id": None})
     pr.github_requested_reviewers = current
     await session.commit()
 

@@ -97,6 +97,7 @@ def _pr_to_summary(pr: PullRequest, stack_id: int | None = None) -> PRSummary:
         stack_id=stack_id,
         assignee_id=pr.assignee_id,
         assignee_name=(pr.assignee.name or pr.assignee.login) if pr.assignee else None,
+        github_requested_reviewers=pr.github_requested_reviewers or [],
         rebased_since_approval=_rebased_since_approval(pr),
     )
 
@@ -192,6 +193,7 @@ async def get_pull(
         review_state=_compute_review_state(pr.reviews),
         assignee_id=pr.assignee_id,
         assignee_name=(pr.assignee.name or pr.assignee.login) if pr.assignee else None,
+        github_requested_reviewers=pr.github_requested_reviewers or [],
         rebased_since_approval=_rebased_since_approval(pr),
         check_runs=[
             CheckRunOut(

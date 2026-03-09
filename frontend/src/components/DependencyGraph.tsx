@@ -26,7 +26,7 @@ interface Props {
 }
 
 const CARD_W = 210;
-const CARD_H = 116;
+const CARD_H = 140;
 const GAP_X = 50;
 const GAP_Y = 30;
 const PAD = 20;
@@ -246,6 +246,18 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimAssigneeId, 
           {pr.draft && <Tooltip text="Draft PR — not ready for merge" position="top"><span className={styles.draftBadge}>Draft</span></Tooltip>}
         </div>
         <div className={styles.cardTitle}>{pr.title}</div>
+        <div className={styles.cardReviewers}>
+          {pr.github_requested_reviewers && pr.github_requested_reviewers.length > 0 ? (
+            pr.github_requested_reviewers.map((r) => (
+              <span key={r.login} className={styles.reviewerEntry}>
+                {r.avatar_url && <img src={r.avatar_url} alt={r.login} className={styles.reviewerAvatar} />}
+                <span className={styles.reviewerLogin}>{r.login}</span>
+              </span>
+            ))
+          ) : (
+            <span className={styles.noReviewers}>No reviewers</span>
+          )}
+        </div>
         <div className={styles.cardAssignee}>
           <select
             value={pr.assignee_id ?? ''}

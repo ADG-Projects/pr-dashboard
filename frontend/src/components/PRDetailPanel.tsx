@@ -90,9 +90,28 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
         <div className={styles.body}>
           {/* Assignee */}
           <section className={styles.section}>
-            <Tooltip text="Assign a team member to track this PR" position="right">
-              <h3>Assignee</h3>
+            <Tooltip text="Requested reviewers synced from GitHub" position="right">
+              <h3>Reviewers</h3>
             </Tooltip>
+            {pr.github_requested_reviewers.length > 0 ? (
+              <div className={styles.ghReviewerList}>
+                {pr.github_requested_reviewers.map((r) => (
+                  <div key={r.login} className={styles.ghReviewer}>
+                    {r.avatar_url && (
+                      <img
+                        src={r.avatar_url}
+                        alt={r.login}
+                        className={styles.ghReviewerAvatar}
+                      />
+                    )}
+                    <span className={styles.ghReviewerLogin}>{r.login}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className={styles.ghUnassigned}>No reviewers requested</div>
+            )}
+            <div className={styles.overrideLabel}>Dashboard override</div>
             <select
               className={styles.assigneeSelect}
               value={pr.assignee_id ?? ''}
@@ -102,7 +121,7 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
               }}
               disabled={assigneeMutation.isPending}
             >
-              <option value="">Unassigned</option>
+              <option value="">None</option>
               {activeTeam.map((m) => (
                 <option key={m.id} value={m.id}>{m.name || m.login}</option>
               ))}

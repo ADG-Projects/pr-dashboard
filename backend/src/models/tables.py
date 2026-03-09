@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     ForeignKey,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.base import Base
@@ -145,6 +147,9 @@ class PullRequest(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     assignee: Mapped["User | None"] = relationship(foreign_keys=[assignee_id])
+    github_requested_reviewers: Mapped[list | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), default=list
+    )
     user_progress: Mapped[list["UserProgress"]] = relationship(
         back_populates="pull_request", cascade="all, delete-orphan"
     )

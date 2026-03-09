@@ -26,22 +26,9 @@ from src.services.sync_service import SyncService
 sync_service = SyncService(interval_seconds=settings.sync_interval_seconds)
 
 
-def _run_alembic_upgrade() -> None:
-    """Run alembic upgrade head synchronously at startup."""
-    from alembic import command
-    from alembic.config import Config
-
-    alembic_cfg = Config(str(Path(__file__).parent.parent / "alembic.ini"))
-    alembic_cfg.set_main_option("script_location", str(Path(__file__).parent.parent / "alembic"))
-    command.upgrade(alembic_cfg, "head")
-
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
-    """Run migrations and start background sync on startup."""
-    _run_alembic_upgrade()
-    logger.info("Database migrations applied")
-
+    """Start background sync on startup."""
     await sync_service.start()
 
     yield

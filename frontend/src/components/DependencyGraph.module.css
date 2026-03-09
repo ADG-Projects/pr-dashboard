@@ -112,6 +112,40 @@
   margin-top: auto;
 }
 
+.cardReviewers {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  max-height: 28px;
+}
+
+.reviewerEntry {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.reviewerAvatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.reviewerLogin {
+  font-size: 0.6rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.noReviewers {
+  font-size: 0.6rem;
+  color: var(--text-dim);
+}
+
 .cardAssignee {
   margin-bottom: 0.2rem;
 }
@@ -163,7 +197,7 @@
 .standaloneCard {
   position: relative;
   width: 210px;
-  height: 116px;
+  height: 140px;
   background: var(--bg-surface);
   border: 2px solid var(--border-default);
   border-radius: var(--radius-lg);

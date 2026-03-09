@@ -130,6 +130,47 @@
   margin-left: auto;
 }
 
+/* GitHub reviewer display */
+.ghReviewerList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.ghReviewer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.ghReviewerAvatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
+.ghReviewerLogin {
+  color: var(--accent-teal);
+  font-weight: 500;
+}
+
+.ghUnassigned {
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 0.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.overrideLabel {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.2rem;
+}
+
 /* Assignee select */
 .assigneeSelect {
   width: 100%;

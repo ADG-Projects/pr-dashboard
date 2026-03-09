@@ -135,17 +135,7 @@ export interface User {
   avatar_url: string | null;
   is_active: boolean;
   created_at: string;
-}
-
-export interface Progress {
-  id: number;
-  pull_request_id: number;
-  user_id: number;
-  user_name: string;
-  reviewed: boolean;
-  approved: boolean;
-  notes: string | null;
-  updated_at: string;
+  linked_accounts: { login: string; avatar_url: string | null; space_slugs: string[] }[];
 }
 
 export interface AvailableRepo {
@@ -259,22 +249,15 @@ export const api = {
       body: JSON.stringify({ assignee_id: assigneeId }),
     }),
 
-  // Progress
-  getProgress: (prId: number) =>
-    request<Progress[]>(`/api/pulls/${prId}/progress`),
-  updateProgress: (
-    prId: number,
-    data: {
-      user_id: number;
-      reviewed?: boolean;
-      approved?: boolean;
-      notes?: string;
-    },
-  ) =>
-    request<Progress>(`/api/pulls/${prId}/progress`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
+  // Reviewers
+  updateReviewers: (repoId: number, number: number, addUserIds: number[], removeLogins: string[]) =>
+    request<{ github_requested_reviewers: { login: string; avatar_url: string | null }[] }>(
+      `/api/repos/${repoId}/pulls/${number}/reviewers`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ add_user_ids: addUserIds, remove_logins: removeLogins }),
+      },
+    ),
 
   // Auth
   login: (password: string) =>

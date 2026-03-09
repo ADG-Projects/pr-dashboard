@@ -1,7 +1,8 @@
-/** Slide-out right panel showing PR detail, checks, reviews, assignee, and team progress. */
+/** Slide-out right panel showing PR detail, checks, reviews, and requested reviewers. */
 
+import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type PRDetail } from '../api/client';
+import { api, type PRDetail, type User, type Space } from '../api/client';
 import { StatusDot } from './StatusDot';
 import { Tooltip } from './Tooltip';
 import styles from './PRDetailPanel.module.css';
@@ -14,6 +15,19 @@ interface Props {
 
 export function PRDetailPanel({ repoId, prId, onClose }: Props) {
   const qc = useQueryClient();
+  const [addReviewerOpen, setAddReviewerOpen] = useState(false);
+  const addReviewerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (addReviewerRef.current && !addReviewerRef.current.contains(e.target as Node)) {
+        setAddReviewerOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
   const { data: pulls } = useQuery({
     queryKey: ['pulls', repoId],
     queryFn: () => api.listPulls(repoId),
@@ -35,28 +49,54 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
   });
   const activeTeam = team?.filter((m) => m.is_active) || [];
 
-  const assigneeMutation = useMutation({
-    mutationFn: (assigneeId: number | null) =>
-      api.assignPr(repoId, prSummary!.number, assigneeId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['pulls', repoId] });
-      qc.invalidateQueries({ queryKey: ['pr-detail', repoId, prSummary?.number] });
-    },
+  const { data: repos } = useQuery({
+    queryKey: ['repos'],
+    queryFn: () => api.listRepos(),
+  });
+  const { data: spaces } = useQuery({
+    queryKey: ['spaces'],
+    queryFn: api.listSpaces,
   });
 
-  const { data: progress } = useQuery({
-    queryKey: ['progress', prId],
-    queryFn: () => api.getProgress(prId),
-    enabled: !!prId,
+  const repoSpaceSlug = (() => {
+    const repo = repos?.find((r) => r.id === repoId);
+    if (!repo?.space_id || !spaces) return null;
+    return spaces.find((s: Space) => s.id === repo.space_id)?.slug ?? null;
+  })();
+
+  const resolveLogin = (user: User): string | null => {
+    if (!repoSpaceSlug || user.linked_accounts.length <= 1) return null;
+    const match = user.linked_accounts.find((a) =>
+      a.space_slugs.includes(repoSpaceSlug),
+    );
+    if (!match || match.login === (user.name || user.login)) return null;
+    return match.login;
+  };
+
+  const invalidatePr = () => {
+    qc.invalidateQueries({ queryKey: ['pulls', repoId] });
+    qc.invalidateQueries({ queryKey: ['pr-detail', repoId, prSummary?.number] });
+  };
+
+  const addReviewerMutation = useMutation({
+    mutationFn: (userId: number) =>
+      api.updateReviewers(repoId, prSummary!.number, [userId], []),
+    onSuccess: invalidatePr,
   });
 
-  const progressMutation = useMutation({
-    mutationFn: (data: { user_id: number; reviewed?: boolean; approved?: boolean }) =>
-      api.updateProgress(prId, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['progress', prId] });
-    },
+  const removeReviewerMutation = useMutation({
+    mutationFn: (login: string) =>
+      api.updateReviewers(repoId, prSummary!.number, [], [login]),
+    onSuccess: invalidatePr,
   });
+
+  // Team members not already requested as reviewers
+  const currentReviewerLogins = new Set(
+    pr?.github_requested_reviewers.map((r) => r.login) || [],
+  );
+  const availableReviewers = activeTeam.filter(
+    (m: User) => !currentReviewerLogins.has(m.login),
+  );
 
 
   return (
@@ -88,9 +128,9 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
 
       {pr && (
         <div className={styles.body}>
-          {/* Assignee */}
+          {/* Reviewers */}
           <section className={styles.section}>
-            <Tooltip text="Requested reviewers synced from GitHub" position="right">
+            <Tooltip text="Requested reviewers — synced with GitHub" position="right">
               <h3>Reviewers</h3>
             </Tooltip>
             {pr.github_requested_reviewers.length > 0 ? (
@@ -105,27 +145,57 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
                       />
                     )}
                     <span className={styles.ghReviewerLogin}>{r.login}</span>
+                    <button
+                      className={styles.removeReviewerBtn}
+                      onClick={() => removeReviewerMutation.mutate(r.login)}
+                      disabled={removeReviewerMutation.isPending}
+                      title={`Remove ${r.login}`}
+                    >
+                      x
+                    </button>
                   </div>
                 ))}
               </div>
             ) : (
               <div className={styles.ghUnassigned}>No reviewers requested</div>
             )}
-            <div className={styles.overrideLabel}>Dashboard override</div>
-            <select
-              className={styles.assigneeSelect}
-              value={pr.assignee_id ?? ''}
-              onChange={(e) => {
-                const val = e.target.value;
-                assigneeMutation.mutate(val ? Number(val) : null);
-              }}
-              disabled={assigneeMutation.isPending}
-            >
-              <option value="">None</option>
-              {activeTeam.map((m) => (
-                <option key={m.id} value={m.id}>{m.name || m.login}</option>
-              ))}
-            </select>
+            {availableReviewers.length > 0 && (
+              <div className={styles.addReviewerDropdown} ref={addReviewerRef}>
+                <button
+                  className={styles.addReviewerTrigger}
+                  onClick={() => setAddReviewerOpen(!addReviewerOpen)}
+                  disabled={addReviewerMutation.isPending}
+                >
+                  <span className={styles.addReviewerPlaceholder}>Add reviewer...</span>
+                  <span className={styles.addReviewerChevron}>{addReviewerOpen ? '\u25B4' : '\u25BE'}</span>
+                </button>
+                {addReviewerOpen && (
+                  <div className={styles.addReviewerMenu}>
+                    {availableReviewers.map((m: User) => {
+                      const resolved = resolveLogin(m);
+                      return (
+                        <div
+                          key={m.id}
+                          className={styles.addReviewerMenuItem}
+                          onClick={() => {
+                            addReviewerMutation.mutate(m.id);
+                            setAddReviewerOpen(false);
+                          }}
+                        >
+                          {m.avatar_url && <img src={m.avatar_url} alt={m.login} className={styles.addReviewerAvatar} />}
+                          <div className={styles.addReviewerInfo}>
+                            <span>{m.name || m.login}</span>
+                            {resolved && (
+                              <span className={styles.addReviewerHint}>will use @{resolved}</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           {/* Diff stats */}
@@ -195,54 +265,6 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
             )}
           </section>
 
-          {/* Team Progress */}
-          {activeTeam.length > 0 && (
-            <section className={styles.section}>
-              <Tooltip text="Track which team members have reviewed and approved" position="right">
-                <h3>Team Progress</h3>
-              </Tooltip>
-              <div className={styles.progressList}>
-                {activeTeam.map((member) => {
-                  const p = progress?.find((x) => x.user_id === member.id);
-                  return (
-                    <div key={member.id} className={styles.progressRow}>
-                      <span className={styles.progressName}>{member.name || member.login}</span>
-                      <Tooltip text="Reviewed" position="top">
-                        <label className={styles.progressCheck}>
-                          <input
-                            type="checkbox"
-                            checked={p?.reviewed ?? false}
-                            onChange={(e) =>
-                              progressMutation.mutate({
-                                user_id: member.id,
-                                reviewed: e.target.checked,
-                              })
-                            }
-                          />
-                          R
-                        </label>
-                      </Tooltip>
-                      <Tooltip text="Approved" position="top">
-                        <label className={styles.progressCheck}>
-                          <input
-                            type="checkbox"
-                            checked={p?.approved ?? false}
-                            onChange={(e) =>
-                              progressMutation.mutate({
-                                user_id: member.id,
-                                approved: e.target.checked,
-                              })
-                            }
-                          />
-                          A
-                        </label>
-                      </Tooltip>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
         </div>
       )}
     </div>

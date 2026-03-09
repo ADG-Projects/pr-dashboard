@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { api, type PRSummary, type RepoSummary, type User } from '../api/client';
 import { DependencyGraph } from '../components/DependencyGraph';
 import { PRDetailPanel } from '../components/PRDetailPanel';
@@ -19,10 +19,22 @@ export function RepoView() {
   const [authorFilter, setAuthorFilter] = useState('');
   const [ciFilter, setCiFilter] = useState('');
   const [stackFilter, setStackFilter] = useState<number | null>(null);
-  const [assigneeFilter, setAssigneeFilter] = useState<number | null>(null);
+  const [reviewerFilter, setReviewerFilter] = useState('');
   const [renamingStack, setRenamingStack] = useState(false);
   const [renameValue, setRenameValue] = useState('');
+  const [reviewerDropdownOpen, setReviewerDropdownOpen] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const reviewerDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (reviewerDropdownRef.current && !reviewerDropdownRef.current.contains(e.target as Node)) {
+        setReviewerDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   // Get repo ID from the repos list
   // Poll while repo hasn't been synced yet so we pick up last_synced_at
@@ -37,6 +49,13 @@ export function RepoView() {
     },
   });
   const repo = repos?.find((r: RepoSummary) => r.owner === owner && r.name === name);
+
+  // Redirect to home if repo no longer exists (e.g. after unlinking an account)
+  useEffect(() => {
+    if (repos && !repo) {
+      navigate('/', { replace: true });
+    }
+  }, [repos, repo, navigate]);
 
   const { data: pulls, isLoading } = useQuery({
     queryKey: ['pulls', repo?.id],
@@ -182,17 +201,47 @@ export function RepoView() {
               )}
             </div>
           </Tooltip>
-          <Tooltip text="Dims PRs not assigned to this person" position="bottom">
-            <select
-              value={assigneeFilter ?? ''}
-              onChange={(e) => setAssigneeFilter(e.target.value ? Number(e.target.value) : null)}
-              className={styles.select}
-            >
-              <option value="">All assignees</option>
-              {activeTeam.map((m: User) => (
-                <option key={m.id} value={m.id}>{m.name || m.login}</option>
-              ))}
-            </select>
+          <Tooltip text="Dims PRs not requesting this reviewer" position="bottom">
+            <div className={styles.reviewerDropdown} ref={reviewerDropdownRef}>
+              <button
+                className={styles.reviewerTrigger}
+                onClick={() => setReviewerDropdownOpen(!reviewerDropdownOpen)}
+              >
+                {(() => {
+                  const selected = activeTeam.find((m: User) => m.login === reviewerFilter);
+                  if (selected) {
+                    return (
+                      <span className={styles.reviewerOption}>
+                        {selected.avatar_url && <img src={selected.avatar_url} alt={selected.login} className={styles.reviewerAvatar} />}
+                        <span>{selected.name || selected.login}</span>
+                      </span>
+                    );
+                  }
+                  return <span>All reviewers</span>;
+                })()}
+                <span className={styles.reviewerChevron}>{reviewerDropdownOpen ? '\u25B4' : '\u25BE'}</span>
+              </button>
+              {reviewerDropdownOpen && (
+                <div className={styles.reviewerMenu}>
+                  <div
+                    className={`${styles.reviewerMenuItem} ${!reviewerFilter ? styles.reviewerMenuItemActive : ''}`}
+                    onClick={() => { setReviewerFilter(''); setReviewerDropdownOpen(false); }}
+                  >
+                    <span>All reviewers</span>
+                  </div>
+                  {activeTeam.map((m: User) => (
+                    <div
+                      key={m.id}
+                      className={`${styles.reviewerMenuItem} ${reviewerFilter === m.login ? styles.reviewerMenuItemActive : ''}`}
+                      onClick={() => { setReviewerFilter(m.login); setReviewerDropdownOpen(false); }}
+                    >
+                      {m.avatar_url && <img src={m.avatar_url} alt={m.login} className={styles.reviewerAvatar} />}
+                      <span>{m.name || m.login}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </Tooltip>
         </div>
 
@@ -208,17 +257,10 @@ export function RepoView() {
             prs={filtered}
             stacks={stacks || []}
             highlightStackId={stackFilter}
-            dimAssigneeId={assigneeFilter}
+            dimReviewerLogin={reviewerFilter || null}
             dimAuthor={authorFilter || null}
             selectedPrId={selectedPrId}
             onSelectPr={selectPr}
-            team={activeTeam}
-            repoId={repo.id}
-            onAssign={(repoId, prNumber, assigneeId) => {
-              api.assignPr(repoId, prNumber, assigneeId).then(() => {
-                qc.invalidateQueries({ queryKey: ['pulls', repo?.id] });
-              });
-            }}
           />
         )}
       </div>

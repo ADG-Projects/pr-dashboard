@@ -163,16 +163,25 @@
   margin-bottom: 0.5rem;
 }
 
-.overrideLabel {
-  font-size: 0.65rem;
+/* Reviewer controls */
+.removeReviewerBtn {
+  background: none;
+  border: none;
   color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 0.2rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  margin-left: auto;
+}
+.removeReviewerBtn:hover { color: var(--accent-red); }
+
+/* Add reviewer dropdown */
+.addReviewerDropdown {
+  position: relative;
+  margin-top: 0.4rem;
 }
 
-/* Assignee select */
-.assigneeSelect {
+.addReviewerTrigger {
   width: 100%;
   background: var(--bg-input);
   border: 1px solid var(--border-default);
@@ -183,38 +192,68 @@
   font-family: inherit;
   outline: none;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  text-align: left;
 }
-.assigneeSelect:focus { border-color: var(--accent-blue); }
+.addReviewerTrigger:hover { border-color: var(--accent-blue); }
+.addReviewerTrigger:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Team progress */
-.progressList {
+.addReviewerPlaceholder {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.addReviewerChevron {
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
+
+.addReviewerMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.addReviewerMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+.addReviewerMenuItem:hover {
+  background: var(--bg-input);
+}
+
+.addReviewerAvatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.addReviewerInfo {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 1px;
 }
 
-.progressRow {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.78rem;
-  padding: 0.2rem 0;
-}
-
-.progressName {
-  flex: 1;
-  color: var(--text-secondary);
-}
-
-.progressCheck {
-  display: flex;
-  align-items: center;
-  gap: 0.2rem;
-  font-size: 0.7rem;
-  font-weight: 600;
+.addReviewerHint {
+  font-size: 0.65rem;
   color: var(--text-dim);
-  cursor: pointer;
-}
-.progressCheck input {
-  cursor: pointer;
+  opacity: 0.8;
 }

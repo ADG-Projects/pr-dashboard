@@ -53,6 +53,7 @@ export function SpaceManager({ onClose }: Props) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts'] });
       qc.invalidateQueries({ queryKey: ['spaces'] });
+      qc.invalidateQueries({ queryKey: ['repos'] });
     },
   });
 

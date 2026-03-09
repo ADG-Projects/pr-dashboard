@@ -48,6 +48,15 @@ export function TeamPanel({ onClose }: Props) {
                   )}
                   <span className={styles.memberName}>{u.name || u.login}</span>
                   <span className={styles.memberLogin}>@{u.login}</span>
+                  {u.linked_accounts.length > 0 &&
+                    u.linked_accounts.some((a) => a.login !== u.login) && (
+                      <span className={styles.linkedAccounts}>
+                        {u.linked_accounts
+                          .filter((a) => a.login !== u.login)
+                          .map((a) => a.login)
+                          .join(' · ')}
+                      </span>
+                    )}
                   <Tooltip text="Deactivate user" position="left">
                     <button
                       className={styles.deleteBtn}

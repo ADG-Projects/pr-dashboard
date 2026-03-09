@@ -125,31 +125,53 @@
 
 .cardReviewers {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
-  overflow: hidden;
-  max-height: 28px;
-}
-
-.reviewerEntry {
-  display: flex;
   align-items: center;
   gap: 0.25rem;
 }
 
-.reviewerAvatar {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  flex-shrink: 0;
+.reviewerAvatarStack {
+  display: flex;
+  align-items: center;
 }
 
-.reviewerLogin {
+.reviewerAvatarStack .reviewerAvatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--bg-primary, #1a1a2e);
+  flex-shrink: 0;
+  margin-left: -6px;
+}
+
+.reviewerAvatarStack .reviewerAvatar:first-child {
+  margin-left: 0;
+}
+
+.reviewerAvatarInitial {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--bg-primary, #1a1a2e);
+  flex-shrink: 0;
+  margin-left: -6px;
+  background: var(--bg-tertiary, #333);
+  color: var(--text-secondary);
+  font-size: 0.55rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}
+
+.reviewerAvatarInitial:first-child {
+  margin-left: 0;
+}
+
+.reviewerOverflow {
   font-size: 0.6rem;
   color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin-left: 2px;
+  font-weight: 500;
 }
 
 .noReviewers {

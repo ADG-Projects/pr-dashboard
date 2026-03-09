@@ -231,12 +231,25 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
         <div className={styles.cardTitle}>{pr.title}</div>
         <div className={styles.cardReviewers}>
           {pr.github_requested_reviewers && pr.github_requested_reviewers.length > 0 ? (
-            pr.github_requested_reviewers.map((r) => (
-              <span key={r.login} className={styles.reviewerEntry}>
-                {r.avatar_url && <img src={r.avatar_url} alt={r.login} className={styles.reviewerAvatar} />}
-                <span className={styles.reviewerLogin}>{nameMap?.get(r.login)?.displayName || r.login}</span>
-              </span>
-            ))
+            <Tooltip
+              text={pr.github_requested_reviewers.map((r) => nameMap?.get(r.login)?.displayName || r.login).join(', ')}
+              position="top"
+            >
+              <div className={styles.reviewerAvatarStack}>
+                {pr.github_requested_reviewers.slice(0, 3).map((r) =>
+                  r.avatar_url ? (
+                    <img key={r.login} src={r.avatar_url} alt={r.login} className={styles.reviewerAvatar} />
+                  ) : (
+                    <span key={r.login} className={styles.reviewerAvatarInitial}>
+                      {(nameMap?.get(r.login)?.displayName || r.login).charAt(0).toUpperCase()}
+                    </span>
+                  )
+                )}
+                {pr.github_requested_reviewers.length > 3 && (
+                  <span className={styles.reviewerOverflow}>+{pr.github_requested_reviewers.length - 3}</span>
+                )}
+              </div>
+            </Tooltip>
           ) : (
             <span className={styles.noReviewers}>No reviewers</span>
           )}

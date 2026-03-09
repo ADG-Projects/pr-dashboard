@@ -1,8 +1,10 @@
 """API routes for pull requests."""
 
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -20,6 +22,7 @@ from src.models.tables import (
     GitHubAccount,
     PRStackMembership,
     PullRequest,
+    RepoTracker,
     Review,
     Space,
     TrackedRepo,
@@ -35,16 +38,28 @@ router = APIRouter(prefix="/api/repos/{repo_id}", tags=["pulls"])
 async def _get_github_client_for_pr(
     session: AsyncSession, repo_id: int
 ) -> tuple[GitHubClient, TrackedRepo]:
-    """Resolve the GitHub token for a tracked repo and return a client + repo."""
+    """Resolve the GitHub token for a tracked repo via its trackers and return a client + repo."""
     repo = await session.get(TrackedRepo, repo_id)
     if not repo:
         raise HTTPException(status_code=404, detail="Repo not found")
 
-    if repo.space_id:
-        space = await session.get(Space, repo.space_id)
-        if space and space.github_account_id:
-            account = await session.get(GitHubAccount, space.github_account_id)
-            if account and account.encrypted_token:
+    # Try each tracker's space → github_account for a valid token
+    trackers = (
+        (
+            await session.execute(
+                select(RepoTracker)
+                .options(selectinload(RepoTracker.space).selectinload(Space.github_account))
+                .where(RepoTracker.repo_id == repo_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    for tracker in trackers:
+        if tracker.space and tracker.space.github_account:
+            account = tracker.space.github_account
+            if account.encrypted_token:
                 token = decrypt_token(account.encrypted_token)
                 return GitHubClient(token=token, base_url=account.base_url), repo
 
@@ -130,6 +145,7 @@ def _pr_to_summary(pr: PullRequest, stack_id: int | None = None) -> PRSummary:
         assignee_name=(pr.assignee.name or pr.assignee.login) if pr.assignee else None,
         github_requested_reviewers=pr.github_requested_reviewers or [],
         rebased_since_approval=_rebased_since_approval(pr),
+        merged_at=pr.merged_at,
     )
 
 
@@ -139,12 +155,24 @@ async def list_pulls(
     author: str | None = Query(None),
     ci_status: str | None = Query(None),
     draft: bool | None = Query(None),
+    include_merged_days: int | None = Query(None),
     session: AsyncSession = Depends(get_session),
 ) -> list[PRSummary]:
-    """List open PRs for a repo with optional filters."""
+    """List PRs for a repo with optional filters.
+
+    Includes merged PRs when include_merged_days is set.
+    """
     repo = await session.get(TrackedRepo, repo_id)
     if not repo:
         raise HTTPException(status_code=404, detail="Repo not found")
+
+    state_condition = PullRequest.state == "open"
+    if include_merged_days is not None:
+        cutoff = datetime.now(UTC) - timedelta(days=include_merged_days)
+        state_condition = or_(
+            PullRequest.state == "open",
+            PullRequest.merged_at >= cutoff,
+        )
 
     stmt = (
         select(PullRequest)
@@ -153,7 +181,7 @@ async def list_pulls(
             selectinload(PullRequest.reviews),
             joinedload(PullRequest.assignee),
         )
-        .where(PullRequest.repo_id == repo_id, PullRequest.state == "open")
+        .where(PullRequest.repo_id == repo_id, state_condition)
         .order_by(PullRequest.updated_at.desc())
     )
     if author:
@@ -310,24 +338,31 @@ async def _resolve_login_for_repo(
 ) -> tuple[str, str | None]:
     """Resolve the correct GitHub login and avatar for a user in the context of a repo's space.
 
-    If the user has a GitHubAccount linked to a space with the same slug as
-    the repo's space, use that account's login and avatar. Otherwise fall back to User fields.
+    Looks at the repo's trackers to find a space slug, then checks if the user
+    has a GitHubAccount linked to a space with the same slug.
     """
-    if repo.space_id:
-        repo_space = await session.get(Space, repo.space_id)
-        if repo_space:
-            # Find user's GitHubAccount linked to a space with the same slug
-            result = await session.execute(
-                select(GitHubAccount)
-                .join(Space, Space.github_account_id == GitHubAccount.id)
-                .where(
-                    GitHubAccount.user_id == user.id,
-                    Space.slug == repo_space.slug,
-                )
+    # Find the repo owner's space slug from any tracker
+    tracker = (
+        await session.execute(
+            select(RepoTracker)
+            .options(selectinload(RepoTracker.space))
+            .where(RepoTracker.repo_id == repo.id, RepoTracker.space_id.isnot(None))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if tracker and tracker.space:
+        result = await session.execute(
+            select(GitHubAccount)
+            .join(Space, Space.github_account_id == GitHubAccount.id)
+            .where(
+                GitHubAccount.user_id == user.id,
+                Space.slug == tracker.space.slug,
             )
-            account = result.scalar_one_or_none()
-            if account:
-                return account.login, account.avatar_url
+        )
+        account = result.scalar_one_or_none()
+        if account:
+            return account.login, account.avatar_url
     return user.login, user.avatar_url
 
 

@@ -1,6 +1,8 @@
 # PR Dashboard — TODO
 
 ## Completed
+- [x] Custom filter dropdowns + PR state filter + merged PR support: author filter converted to custom avatar dropdown matching reviewer style, new combined state filter (all open, needs review, reviewed, approved, changes requested, draft, recently merged), backend supports returning merged PRs via include_merged_days param, merged PR cards shown with purple border and badge (2026-03-09)
+- [x] Collaborative repo ownership + dev impersonation: RepoTracker junction table lets multiple users independently track the same repo with their own token/space; sync uses token fallback across trackers; dev-mode impersonation endpoint + seed script for multi-user testing; frontend dev user switcher (2026-03-09)
 - [x] Remove local overrides — sync everything with GitHub: assignees synced from GitHub during sync, assignee/reviewer changes write back to GitHub API, UserProgress table dropped (dashboard mirrors GitHub review state), card assignee display is read-only (edit in detail panel only) (2026-03-09)
 - [x] Per-repo visibility (private/shared): visibility moved from spaces to individual repos, each user only sees their own repos unless explicitly shared; spaces simplified to owner-only; alembic migrations run on startup (2026-03-06)
 - [x] Space visibility (private/shared): spaces default to private, users can toggle to shared so coworkers see them; repos inherit visibility from parent space; visibility filter applied to spaces and repos API endpoints (2026-03-06)

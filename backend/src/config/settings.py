@@ -60,6 +60,11 @@ class Settings(BaseSettings):
         default="http://localhost:5173", description="Frontend URL for redirects"
     )
 
+    # Dev mode
+    dev_mode: bool = Field(default=False, description="Enable dev-only features (impersonation)")
+    dev_alice_token: str = Field(default="", description="GitHub PAT for Alice dev user")
+    dev_bob_token: str = Field(default="", description="GitHub PAT for Bob dev user")
+
     # Server
     host: str = Field(default="0.0.0.0", description="Server bind host")
     port: int = Field(default=8000, description="Server bind port")

@@ -36,8 +36,9 @@ For manual migrations: `cd backend && uv run alembic upgrade head`
 - **Multi-account**: Users can link multiple GitHub accounts (GitHubAccount model), each with its own token + base_url (supports GitHub.com + GHE)
 - **Auto-discovery**: On OAuth login, the app calls `/user/orgs` + `/user` to auto-create Space rows for each org and the personal account
 - **Spaces**: each space = a discovered org or personal account, linked to a GitHubAccount for its token. Users toggle spaces on/off to control which orgs are synced. Spaces are owner-only (no shared concept).
-- **Repo visibility**: each TrackedRepo has its own `visibility` (private/shared) and `user_id` (owner). Private repos only visible to owner; shared repos visible to all. Visibility toggled per-repo on the OrgOverview page.
-- Background sync loop runs per-active-space, getting token from `space.github_account`
+- **Collaborative repo ownership**: `RepoTracker` junction table links Users to TrackedRepos. Each user independently tracks a repo through their own space (and token). Multiple users can track the same repo. `visibility` and `space_id` live on RepoTracker, not TrackedRepo. Repos with zero trackers are deactivated.
+- **Token fallback**: Sync iterates all active TrackedRepos (not spaces), resolving a token from any tracker's space. If one tracker's token fails, the next is tried.
+- **Dev impersonation**: `DEV_MODE=true` enables `POST /api/auth/dev-login/{user_id}` to switch users without OAuth. Seed script creates fake users sharing the real user's token.
 - Stack detection via BFS on `head_ref`/`base_ref` relationships between open PRs
 - SSE broadcasts progress updates and sync completions to connected clients
 - Token encryption via Fernet (key derived from SECRET_KEY)
@@ -51,13 +52,13 @@ backend/
     api/          # FastAPI routes (accounts, repos, spaces, pulls, stacks, team, progress, auth, events)
     config/       # Pydantic settings
     db/           # SQLAlchemy engine + base
-    models/       # ORM models (tables.py) — User, GitHubAccount, Space, TrackedRepo, PullRequest, etc.
+    models/       # ORM models (tables.py) — User, GitHubAccount, Space, TrackedRepo, RepoTracker, PullRequest, etc.
     services/     # GitHub client, sync service, stack detector, SSE events, crypto, discovery
   alembic/        # Database migrations
 frontend/
   src/
     api/          # API client + types
-    components/   # Shell, SpaceManager, TeamPanel, StatusDot, PRDetailPanel, DependencyGraph
+    components/   # Shell, SpaceManager, TeamPanel, StatusDot, PRDetailPanel, DependencyGraph, DevUserSwitcher
     pages/        # OrgOverview, RepoView
     store/        # Zustand UI state
     styles/       # CSS tokens + global styles
@@ -84,4 +85,5 @@ See `.env.example` for all options. Key ones:
 - `DATABASE_URL` — PostgreSQL async connection string
 - `SECRET_KEY` — Used for session cookies AND token encryption (change in production!)
 - `DASHBOARD_PASSWORD` — Optional, enables password gate (leave empty to disable)
+- `DEV_MODE` — Enable dev-only features (user impersonation endpoint)
 - `GITHUB_TOKEN` / `GITHUB_ORG` — Legacy, used only for migration seeding

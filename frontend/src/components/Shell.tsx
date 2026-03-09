@@ -10,6 +10,7 @@ import { TeamPanel } from './TeamPanel';
 import { SpaceManager } from './SpaceManager';
 import { Tooltip } from './Tooltip';
 import { GitHubIcon } from './GitHubIcon';
+import { DevUserSwitcher } from './DevUserSwitcher';
 import styles from './Shell.module.css';
 
 export function Shell() {
@@ -81,6 +82,7 @@ export function Shell() {
           </Tooltip>
         </nav>
         <div className={styles.spacer} />
+        <DevUserSwitcher />
         <div className={styles.userArea}>
           {user ? (
             <div className={styles.userMenuWrapper} ref={userMenuRef}>

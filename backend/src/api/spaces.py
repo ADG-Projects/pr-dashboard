@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from src.api.auth import get_github_user_id
 from src.api.schemas import SpaceOut, SpaceToggle
 from src.db.engine import get_session
-from src.models.tables import GitHubAccount, Space, TrackedRepo
+from src.models.tables import GitHubAccount, RepoTracker, Space, TrackedRepo
 from src.services.crypto import decrypt_token
 from src.services.github_client import GitHubClient
 
@@ -110,8 +110,10 @@ async def delete_space(space_id: int, session: AsyncSession = Depends(get_sessio
 
 
 @router.get("/{space_id}/available-repos")
-async def list_available_repos(space_id: int, session: AsyncSession = Depends(get_session)):
-    """List repos in a space's org/user that are not yet tracked."""
+async def list_available_repos(
+    space_id: int, request: Request, session: AsyncSession = Depends(get_session)
+):
+    """List repos in a space's org/user that the current user is not yet tracking."""
     result = await session.execute(
         select(Space).options(selectinload(Space.github_account)).where(Space.id == space_id)
     )
@@ -131,9 +133,10 @@ async def list_available_repos(space_id: int, session: AsyncSession = Depends(ge
         else:
             repos = await gh.list_user_repos(space.slug)
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 403 and space.space_type == "org":
+        if exc.response.status_code in (403, 404) and space.space_type == "org":
             logger.warning(
-                f"Cannot list org repos for {space.slug} (403), " f"falling back to /user/repos"
+                f"Cannot list org repos for {space.slug} ({exc.response.status_code}), "
+                f"falling back to /user/repos"
             )
             all_repos = await gh.list_all_repos()
             repos = [r for r in all_repos if r["owner"]["login"] == space.slug]
@@ -143,15 +146,33 @@ async def list_available_repos(space_id: int, session: AsyncSession = Depends(ge
     finally:
         await gh.close()
 
-    tracked = set(
-        (
-            await session.execute(
-                select(TrackedRepo.full_name).where(TrackedRepo.is_active.is_(True))
+    # Per-user filter: only hide repos the current user already tracks
+    user_id = get_github_user_id(request)
+    if user_id:
+        user_tracked = set(
+            (
+                await session.execute(
+                    select(TrackedRepo.full_name)
+                    .join(RepoTracker, RepoTracker.repo_id == TrackedRepo.id)
+                    .where(
+                        RepoTracker.user_id == user_id,
+                        TrackedRepo.is_active.is_(True),
+                    )
+                )
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
+    else:
+        user_tracked = set(
+            (
+                await session.execute(
+                    select(TrackedRepo.full_name).where(TrackedRepo.is_active.is_(True))
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     return [
         {
@@ -162,7 +183,7 @@ async def list_available_repos(space_id: int, session: AsyncSession = Depends(ge
             "pushed_at": r.get("pushed_at"),
         }
         for r in repos
-        if not r.get("archived") and r["full_name"] not in tracked
+        if not r.get("archived") and r["full_name"] not in user_tracked
     ]
 
 

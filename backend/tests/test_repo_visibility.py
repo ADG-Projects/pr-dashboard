@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.auth import _sign
-from src.models.tables import GitHubAccount, Space, TrackedRepo, User
+from src.models.tables import GitHubAccount, RepoTracker, Space, TrackedRepo, User
 from src.services.discovery import _upsert_space
 
 
@@ -71,12 +71,20 @@ async def _make_repo(
         name=name,
         full_name=f"{owner}/{name}",
         default_branch="main",
-        space_id=space_id,
-        user_id=user_id,
-        visibility=visibility,
     )
     session.add(repo)
     await session.flush()
+
+    if user_id is not None:
+        tracker = RepoTracker(
+            user_id=user_id,
+            repo_id=repo.id,
+            space_id=space_id,
+            visibility=visibility,
+        )
+        session.add(tracker)
+        await session.flush()
+
     return repo
 
 

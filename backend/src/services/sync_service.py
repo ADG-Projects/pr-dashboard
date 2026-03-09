@@ -9,7 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.db.engine import async_session_factory
-from src.models.tables import CheckRun, GitHubAccount, PullRequest, Review, Space, TrackedRepo, User
+from src.models.tables import (
+    CheckRun,
+    GitHubAccount,
+    PullRequest,
+    RepoTracker,
+    Review,
+    Space,
+    TrackedRepo,
+    User,
+)
 from src.services.crypto import decrypt_token
 from src.services.events import broadcast_event
 from src.services.github_client import GitHubClient, parse_gh_datetime
@@ -49,78 +58,61 @@ class SyncService:
                 logger.exception("Sync cycle failed")
             await asyncio.sleep(self.interval)
 
-    async def sync_all(self) -> None:
-        """Run one full sync cycle across all tracked repos, grouped by space."""
-        async with async_session_factory() as session:
-            spaces = (
-                (
-                    await session.execute(
-                        select(Space)
-                        .options(selectinload(Space.github_account))
-                        .where(Space.is_active.is_(True))
-                    )
+    async def _resolve_client_for_repo(
+        self, session: AsyncSession, repo_id: int
+    ) -> GitHubClient | None:
+        """Try each tracker's space token for a repo, return first working client."""
+        trackers = (
+            (
+                await session.execute(
+                    select(RepoTracker)
+                    .options(selectinload(RepoTracker.space).selectinload(Space.github_account))
+                    .where(RepoTracker.repo_id == repo_id)
                 )
+            )
+            .scalars()
+            .all()
+        )
+
+        for tracker in trackers:
+            if tracker.space and tracker.space.github_account:
+                account = tracker.space.github_account
+                if account.encrypted_token and account.is_active:
+                    token = decrypt_token(account.encrypted_token)
+                    return GitHubClient(token=token, base_url=account.base_url)
+
+        return None
+
+    async def sync_all(self) -> None:
+        """Run one full sync cycle across all active tracked repos."""
+        async with async_session_factory() as session:
+            repos = (
+                (await session.execute(select(TrackedRepo).where(TrackedRepo.is_active.is_(True))))
                 .scalars()
                 .all()
             )
 
-        for space in spaces:
-            account = space.github_account
-            if not account or not account.encrypted_token:
-                logger.warning(f"Space '{space.name}' has no linked account/token, skipping")
-                continue
-            token = decrypt_token(account.encrypted_token)
-            gh = GitHubClient(token=token, base_url=account.base_url)
+        for repo in repos:
+            gh = None
             try:
                 async with async_session_factory() as session:
-                    repos = (
-                        (
-                            await session.execute(
-                                select(TrackedRepo).where(
-                                    TrackedRepo.is_active.is_(True),
-                                    TrackedRepo.space_id == space.id,
-                                )
-                            )
-                        )
-                        .scalars()
-                        .all()
-                    )
+                    gh = await self._resolve_client_for_repo(session, repo.id)
 
-                for repo in repos:
-                    try:
-                        await self.sync_repo(repo.id, repo.owner, repo.name, gh)
-                    except Exception:
-                        logger.exception(f"Failed to sync {repo.full_name}")
+                if not gh:
+                    # Fallback to global token
+                    from src.config.settings import settings
+
+                    if settings.github_token:
+                        gh = GitHubClient(token=settings.github_token)
+                    else:
+                        logger.warning(f"No token available for {repo.full_name}, skipping")
+                        continue
+
+                await self.sync_repo(repo.id, repo.owner, repo.name, gh)
+            except Exception:
+                logger.exception(f"Failed to sync {repo.full_name}")
             finally:
-                await gh.close()
-
-        # Also sync repos without a space (legacy, using fallback token)
-        async with async_session_factory() as session:
-            orphan_repos = (
-                (
-                    await session.execute(
-                        select(TrackedRepo).where(
-                            TrackedRepo.is_active.is_(True),
-                            TrackedRepo.space_id.is_(None),
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-        if orphan_repos:
-            from src.config.settings import settings
-
-            if settings.github_token:
-                gh = GitHubClient(token=settings.github_token)
-                try:
-                    for repo in orphan_repos:
-                        try:
-                            await self.sync_repo(repo.id, repo.owner, repo.name, gh)
-                        except Exception:
-                            logger.exception(f"Failed to sync {repo.full_name}")
-                finally:
+                if gh:
                     await gh.close()
 
     async def sync_repo(
@@ -337,7 +329,7 @@ class SyncService:
         """
         # Check if this github_id is already linked as a GitHubAccount
         acct_result = await session.execute(
-            select(GitHubAccount).where(GitHubAccount.github_id == github_id)
+            select(GitHubAccount).where(GitHubAccount.github_id == github_id).limit(1)
         )
         acct = acct_result.scalar_one_or_none()
         if acct:

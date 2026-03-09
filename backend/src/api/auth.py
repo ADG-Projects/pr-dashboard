@@ -22,8 +22,13 @@ from src.services.events import broadcast_event
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # Paths that don't require authentication
-PUBLIC_PATHS = {"/api/auth/login", "/api/auth/me", "/api/auth/github/callback", "/api/health"}
-PUBLIC_PREFIXES = ("/api/events",)
+PUBLIC_PATHS = {
+    "/api/auth/login",
+    "/api/auth/me",
+    "/api/auth/github/callback",
+    "/api/health",
+}
+PUBLIC_PREFIXES = ("/api/events", "/api/auth/dev-login/")
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -362,3 +367,64 @@ async def github_disconnect(response: Response):
     """Clear GitHub identity cookie."""
     response.delete_cookie(GITHUB_COOKIE, path="/")
     return {"status": "disconnected"}
+
+
+# ── Dev impersonation ───────────────────────────────────────
+
+
+@router.post("/dev-login/{user_id}")
+async def dev_login(user_id: int, response: Response):
+    """Impersonate any user by ID. Only available when DEV_MODE=true."""
+    if not settings.dev_mode:
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+    async with async_session_factory() as session:
+        user = await session.get(User, user_id)
+        if not user:
+            return JSONResponse(status_code=404, content={"detail": "User not found"})
+
+        # Set identity cookie as that user
+        expires = int(time.time()) + settings.session_max_age_seconds
+        cookie_payload = f"{user.id}:{expires}"
+        token = _sign(cookie_payload)
+
+        is_https = not settings.frontend_url or settings.frontend_url.startswith("https")
+        response.set_cookie(
+            GITHUB_COOKIE,
+            token,
+            max_age=settings.session_max_age_seconds,
+            httponly=True,
+            secure=is_https,
+            samesite="lax",
+            path="/",
+        )
+
+        return {
+            "id": user.id,
+            "login": user.login,
+            "name": user.name,
+            "avatar_url": user.avatar_url,
+        }
+
+
+@router.get("/dev-users")
+async def list_dev_users():
+    """List all users for the dev switcher. Only available when DEV_MODE=true."""
+    if not settings.dev_mode:
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+    async with async_session_factory() as session:
+        users = (
+            (await session.execute(select(User).where(User.is_active.is_(True)).order_by(User.id)))
+            .scalars()
+            .all()
+        )
+        return [
+            {
+                "id": u.id,
+                "login": u.login,
+                "name": u.name,
+                "avatar_url": u.avatar_url,
+            }
+            for u in users
+        ]

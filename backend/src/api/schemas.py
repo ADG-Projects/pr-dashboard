@@ -74,6 +74,7 @@ class RepoSummary(BaseModel):
     space_name: str | None = None
     visibility: str = "private"
     user_id: int | None = None
+    tracker_count: int = 1
 
 
 class RepoDetail(BaseModel):
@@ -131,6 +132,7 @@ class PRSummary(BaseModel):
     assignee_name: str | None = None
     github_requested_reviewers: list[dict] = []
     rebased_since_approval: bool = False
+    merged_at: datetime | None = None
 
 
 class PRDetail(PRSummary):

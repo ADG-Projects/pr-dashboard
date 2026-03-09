@@ -222,7 +222,7 @@ async def remove_account(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    """Soft-delete a linked GitHub account."""
+    """Soft-delete a linked GitHub account and clean up trackers."""
     user_id = get_github_user_id(request)
     if not user_id:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -233,9 +233,10 @@ async def remove_account(
 
     account.is_active = False
 
-    # Delete tracked repos that belong to this account's spaces (cascades to PRs/stacks),
-    # then delete the spaces themselves. Re-login will rediscover them.
-    from sqlalchemy import delete
+    from sqlalchemy import delete, func
+    from sqlalchemy import select as sa_select
+
+    from src.models.tables import RepoTracker, TrackedRepo
 
     space_ids = (
         (await session.execute(select(Space.id).where(Space.github_account_id == account_id)))
@@ -244,10 +245,31 @@ async def remove_account(
     )
 
     if space_ids:
-        from src.models.tables import TrackedRepo
+        # Delete RepoTracker rows where space_id is in the account's spaces
+        await session.execute(delete(RepoTracker).where(RepoTracker.space_id.in_(space_ids)))
 
-        await session.execute(delete(TrackedRepo).where(TrackedRepo.space_id.in_(space_ids)))
+        # Deactivate any TrackedRepo with zero remaining trackers
+        orphan_repo_ids = (
+            (
+                await session.execute(
+                    sa_select(TrackedRepo.id)
+                    .outerjoin(RepoTracker, RepoTracker.repo_id == TrackedRepo.id)
+                    .where(TrackedRepo.is_active.is_(True))
+                    .group_by(TrackedRepo.id)
+                    .having(func.count(RepoTracker.id) == 0)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if orphan_repo_ids:
+            for repo_id in orphan_repo_ids:
+                repo = await session.get(TrackedRepo, repo_id)
+                if repo:
+                    repo.is_active = False
+
+        # Delete the spaces themselves
         await session.execute(delete(Space).where(Space.id.in_(space_ids)))
 
     await session.commit()
-    logger.info(f"Deactivated GitHub account and deleted its spaces/repos: {account.login}")
+    logger.info(f"Deactivated GitHub account and cleaned up trackers/spaces: {account.login}")

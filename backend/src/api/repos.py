@@ -7,12 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import selectinload
 
 from src.api.auth import get_github_user_id
 from src.api.schemas import RepoCreate, RepoDetail, RepoSummary, RepoVisibilityUpdate
 from src.db.engine import get_session
-from src.models.tables import CheckRun, PRStack, PullRequest, Space, TrackedRepo
+from src.models.tables import CheckRun, PRStack, PullRequest, RepoTracker, Space, TrackedRepo
 from src.services.crypto import decrypt_token
 from src.services.github_client import GitHubClient
 
@@ -27,28 +27,46 @@ async def list_repos(
 ) -> list[RepoSummary]:
     """List tracked repos visible to the current user, optionally filtered by space."""
     user_id = get_github_user_id(request)
-    stmt = (
-        select(TrackedRepo)
-        .options(joinedload(TrackedRepo.space))
-        .where(TrackedRepo.is_active.is_(True))
-    )
-    # Visibility filter: direct repo-level visibility
+
+    # Base: active repos that the user tracks OR that any tracker has shared
+    stmt = select(TrackedRepo).where(TrackedRepo.is_active.is_(True))
     if user_id:
+        # Subquery: repo IDs the user directly tracks
+        user_tracker_ids = select(RepoTracker.repo_id).where(RepoTracker.user_id == user_id)
+        # Subquery: repo IDs shared by anyone
+        shared_ids = select(RepoTracker.repo_id).where(RepoTracker.visibility == "shared")
         stmt = stmt.where(
             or_(
-                TrackedRepo.visibility == "shared",
-                TrackedRepo.user_id == user_id,
+                TrackedRepo.id.in_(user_tracker_ids),
+                TrackedRepo.id.in_(shared_ids),
             )
         )
     else:
-        stmt = stmt.where(TrackedRepo.visibility == "shared")
+        shared_ids = select(RepoTracker.repo_id).where(RepoTracker.visibility == "shared")
+        stmt = stmt.where(TrackedRepo.id.in_(shared_ids))
+
     if space_id is not None:
-        stmt = stmt.where(TrackedRepo.space_id == space_id)
+        tracker_repo_ids = select(RepoTracker.repo_id).where(RepoTracker.space_id == space_id)
+        stmt = stmt.where(TrackedRepo.id.in_(tracker_repo_ids))
+
     stmt = stmt.order_by(TrackedRepo.full_name)
-
     repos = (await session.execute(stmt)).scalars().unique().all()
-    summaries: list[RepoSummary] = []
 
+    # Preload all tracker data for the current user (for populating user-specific fields)
+    user_trackers: dict[int, RepoTracker] = {}
+    if user_id:
+        tracker_result = await session.execute(
+            select(RepoTracker)
+            .options(selectinload(RepoTracker.space))
+            .where(
+                RepoTracker.user_id == user_id,
+                RepoTracker.repo_id.in_([r.id for r in repos]),
+            )
+        )
+        for t in tracker_result.scalars().all():
+            user_trackers[t.repo_id] = t
+
+    summaries: list[RepoSummary] = []
     for repo in repos:
         open_count = (
             await session.execute(
@@ -88,6 +106,19 @@ async def list_repos(
             await session.execute(select(func.count(PRStack.id)).where(PRStack.repo_id == repo.id))
         ).scalar_one()
 
+        tracker_count = (
+            await session.execute(
+                select(func.count(RepoTracker.id)).where(RepoTracker.repo_id == repo.id)
+            )
+        ).scalar_one()
+
+        # Use current user's tracker for user-specific fields, or fall back to first shared tracker
+        tracker = user_trackers.get(repo.id)
+        space_id_val = tracker.space_id if tracker else None
+        space_name_val = tracker.space.name if tracker and tracker.space else None
+        visibility_val = tracker.visibility if tracker else "shared"
+        user_id_val = tracker.user_id if tracker else None
+
         summaries.append(
             RepoSummary(
                 id=repo.id,
@@ -101,10 +132,11 @@ async def list_repos(
                 failing_ci_count=failing_count,
                 stale_pr_count=stale_count,
                 stack_count=stack_count,
-                space_id=repo.space_id,
-                space_name=repo.space.name if repo.space else None,
-                visibility=repo.visibility,
-                user_id=repo.user_id,
+                space_id=space_id_val,
+                space_name=space_name_val,
+                visibility=visibility_val,
+                user_id=user_id_val,
+                tracker_count=tracker_count,
             )
         )
 
@@ -128,6 +160,7 @@ async def add_repo(
 
     owner = body.owner or space.slug
     full_name = f"{owner}/{body.name}"
+    repo_user_id = get_github_user_id(request)
 
     async def _background_sync(repo_id: int, owner: str, name: str, space_id: int) -> None:
         from src.services.sync_service import SyncService
@@ -158,16 +191,31 @@ async def add_repo(
     existing = (
         await session.execute(select(TrackedRepo).where(TrackedRepo.full_name == full_name))
     ).scalar_one_or_none()
-    repo_user_id = get_github_user_id(request)
+
     if existing:
-        if not existing.is_active:
-            existing.is_active = True
-            existing.visibility = "private"
-            existing.space_id = body.space_id
-            existing.user_id = repo_user_id
-            existing.last_synced_at = None
+        if existing.is_active:
+            # Check if current user already has a tracker
+            if repo_user_id:
+                existing_tracker = (
+                    await session.execute(
+                        select(RepoTracker).where(
+                            RepoTracker.user_id == repo_user_id,
+                            RepoTracker.repo_id == existing.id,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if existing_tracker:
+                    raise HTTPException(
+                        status_code=409, detail="You are already tracking this repo"
+                    )
+            # Create a new tracker for this user on the existing repo
+            tracker = RepoTracker(
+                user_id=repo_user_id,
+                repo_id=existing.id,
+                space_id=body.space_id,
+            )
+            session.add(tracker)
             await session.commit()
-            await session.refresh(existing)
             asyncio.create_task(
                 _background_sync(existing.id, existing.owner, existing.name, body.space_id)
             )
@@ -180,11 +228,37 @@ async def add_repo(
                 default_branch=existing.default_branch,
                 last_synced_at=existing.last_synced_at,
                 created_at=existing.created_at,
-                space_id=existing.space_id,
-                visibility=existing.visibility,
-                user_id=existing.user_id,
+                space_id=body.space_id,
+                visibility="private",
+                user_id=repo_user_id,
             )
-        raise HTTPException(status_code=409, detail=f"{full_name} is already tracked")
+        else:
+            # Reactivate inactive repo
+            existing.is_active = True
+            existing.last_synced_at = None
+            tracker = RepoTracker(
+                user_id=repo_user_id,
+                repo_id=existing.id,
+                space_id=body.space_id,
+            )
+            session.add(tracker)
+            await session.commit()
+            asyncio.create_task(
+                _background_sync(existing.id, existing.owner, existing.name, body.space_id)
+            )
+            return RepoDetail(
+                id=existing.id,
+                owner=existing.owner,
+                name=existing.name,
+                full_name=existing.full_name,
+                is_active=existing.is_active,
+                default_branch=existing.default_branch,
+                last_synced_at=existing.last_synced_at,
+                created_at=existing.created_at,
+                space_id=body.space_id,
+                visibility="private",
+                user_id=repo_user_id,
+            )
 
     # Validate repo exists on GitHub using the space's account token
     account = space.github_account
@@ -203,10 +277,16 @@ async def add_repo(
         name=body.name,
         full_name=full_name,
         default_branch=gh_repo.get("default_branch", "main"),
-        space_id=body.space_id,
-        user_id=repo_user_id,
     )
     session.add(repo)
+    await session.flush()
+
+    tracker = RepoTracker(
+        user_id=repo_user_id,
+        repo_id=repo.id,
+        space_id=body.space_id,
+    )
+    session.add(tracker)
     await session.commit()
     await session.refresh(repo)
     logger.info(f"Now tracking {full_name}")
@@ -222,44 +302,91 @@ async def add_repo(
         default_branch=repo.default_branch,
         last_synced_at=repo.last_synced_at,
         created_at=repo.created_at,
-        space_id=repo.space_id,
-        visibility=repo.visibility,
-        user_id=repo.user_id,
+        space_id=body.space_id,
+        visibility="private",
+        user_id=repo_user_id,
     )
 
 
 @router.delete("/{repo_id}", status_code=204)
-async def remove_repo(repo_id: int, session: AsyncSession = Depends(get_session)) -> None:
-    """Stop tracking a repo (soft-delete)."""
+async def remove_repo(
+    repo_id: int, request: Request, session: AsyncSession = Depends(get_session)
+) -> None:
+    """Remove current user's tracking of a repo. Deactivates repo if no trackers remain."""
+    user_id = get_github_user_id(request)
+
     repo = await session.get(TrackedRepo, repo_id)
     if not repo:
         raise HTTPException(status_code=404, detail="Repo not found")
-    repo.is_active = False
+
+    if user_id:
+        # Delete just this user's tracker
+        tracker = (
+            await session.execute(
+                select(RepoTracker).where(
+                    RepoTracker.user_id == user_id,
+                    RepoTracker.repo_id == repo_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if tracker:
+            await session.delete(tracker)
+
+    # If no trackers remain, deactivate the repo
+    remaining = (
+        await session.execute(
+            select(func.count(RepoTracker.id)).where(RepoTracker.repo_id == repo_id)
+        )
+    ).scalar_one()
+    if remaining == 0:
+        repo.is_active = False
+
     await session.commit()
 
 
 @router.post("/{repo_id}/sync", status_code=202)
-async def force_sync(repo_id: int, session: AsyncSession = Depends(get_session)) -> dict[str, str]:
+async def force_sync(
+    repo_id: int, request: Request, session: AsyncSession = Depends(get_session)
+) -> dict[str, str]:
     """Trigger an immediate sync for a repo."""
-    result = await session.execute(
-        select(TrackedRepo)
-        .options(joinedload(TrackedRepo.space).selectinload(Space.github_account))
-        .where(TrackedRepo.id == repo_id)
-    )
-    repo = result.scalar_one_or_none()
+    repo = await session.get(TrackedRepo, repo_id)
     if not repo:
         raise HTTPException(status_code=404, detail="Repo not found")
+
+    # Find a token from any tracker's space
+    trackers = (
+        (
+            await session.execute(
+                select(RepoTracker)
+                .options(selectinload(RepoTracker.space).selectinload(Space.github_account))
+                .where(RepoTracker.repo_id == repo_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Prefer current user's tracker
+    user_id = get_github_user_id(request)
+    gh: GitHubClient | None = None
+    sorted_trackers = sorted(trackers, key=lambda t: t.user_id != user_id)
+    for tracker in sorted_trackers:
+        if tracker.space and tracker.space.github_account:
+            account = tracker.space.github_account
+            if account.encrypted_token:
+                token = decrypt_token(account.encrypted_token)
+                gh = GitHubClient(token=token, base_url=account.base_url)
+                break
+
+    if not gh:
+        from src.config.settings import settings
+
+        if settings.github_token:
+            gh = GitHubClient(token=settings.github_token)
 
     from src.services.sync_service import SyncService
 
     svc = SyncService()
-
-    gh: GitHubClient | None = None
-    account = repo.space.github_account if repo.space else None
-    if account and account.encrypted_token:
-        token = decrypt_token(account.encrypted_token)
-        gh = GitHubClient(token=token, base_url=account.base_url)
-
     try:
         await svc.sync_repo(repo.id, repo.owner, repo.name, gh)
     finally:
@@ -276,7 +403,7 @@ async def set_repo_visibility(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> RepoSummary:
-    """Set a repo's visibility (private or shared). Owner only."""
+    """Set a repo's visibility (private or shared). Updates the current user's tracker."""
     if body.visibility not in ("private", "shared"):
         raise HTTPException(status_code=400, detail="visibility must be 'private' or 'shared'")
 
@@ -284,17 +411,26 @@ async def set_repo_visibility(
     if not user_id:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    repo = await session.get(TrackedRepo, repo_id)
-    if not repo:
-        raise HTTPException(status_code=404, detail="Repo not found")
-    if repo.user_id != user_id:
-        raise HTTPException(status_code=403, detail="Only the repo owner can change visibility")
+    tracker = (
+        await session.execute(
+            select(RepoTracker)
+            .options(selectinload(RepoTracker.space))
+            .where(
+                RepoTracker.user_id == user_id,
+                RepoTracker.repo_id == repo_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not tracker:
+        raise HTTPException(status_code=403, detail="You are not tracking this repo")
 
-    repo.visibility = body.visibility
+    tracker.visibility = body.visibility
     await session.commit()
-    await session.refresh(repo, attribute_names=["space"])
 
-    logger.info(f"Repo '{repo.full_name}' visibility set to '{repo.visibility}'")
+    repo = await session.get(TrackedRepo, repo_id)
+    logger.info(
+        f"Repo '{repo.full_name}' visibility set to '{tracker.visibility}' by user {user_id}"
+    )
 
     return RepoSummary(
         id=repo.id,
@@ -308,8 +444,8 @@ async def set_repo_visibility(
         failing_ci_count=0,
         stale_pr_count=0,
         stack_count=0,
-        space_id=repo.space_id,
-        space_name=repo.space.name if repo.space else None,
-        visibility=repo.visibility,
-        user_id=repo.user_id,
+        space_id=tracker.space_id,
+        space_name=tracker.space.name if tracker.space else None,
+        visibility=tracker.visibility,
+        user_id=tracker.user_id,
     )

@@ -66,6 +66,7 @@ export interface RepoSummary {
   space_name: string | null;
   visibility: 'private' | 'shared';
   user_id: number | null;
+  tracker_count: number;
 }
 
 export interface PRSummary {
@@ -91,6 +92,7 @@ export interface PRSummary {
   assignee_name: string | null;
   github_requested_reviewers: { login: string; avatar_url: string | null }[];
   rebased_since_approval: boolean;
+  merged_at: string | null;
 }
 
 export interface CheckRun {
@@ -270,4 +272,9 @@ export const api = {
   getGitHubUser: () => request<GitHubUser | null>('/api/auth/user'),
   disconnectGitHub: () =>
     request('/api/auth/github/disconnect', { method: 'POST' }),
+
+  // Dev mode
+  devListUsers: () => request<GitHubUser[]>('/api/auth/dev-users'),
+  devLogin: (userId: number) =>
+    request<GitHubUser>(`/api/auth/dev-login/${userId}`, { method: 'POST' }),
 };

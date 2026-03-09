@@ -19,6 +19,28 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.db.base import Base
 
 
+class RepoTracker(Base):
+    """Junction table: each user independently tracks a repo through their own space."""
+
+    __tablename__ = "repo_trackers"
+    __table_args__ = (UniqueConstraint("user_id", "repo_id", name="uq_user_repo_tracker"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    repo_id: Mapped[int] = mapped_column(
+        ForeignKey("tracked_repos.id", ondelete="CASCADE"), nullable=False
+    )
+    space_id: Mapped[int | None] = mapped_column(
+        ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
+    )
+    visibility: Mapped[str] = mapped_column(String(20), nullable=False, server_default="private")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped["User"] = relationship(foreign_keys=[user_id])
+    repo: Mapped["TrackedRepo"] = relationship(back_populates="trackers")
+    space: Mapped["Space | None"] = relationship(foreign_keys=[space_id])
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -77,7 +99,6 @@ class Space(Base):
 
     github_account: Mapped["GitHubAccount | None"] = relationship(back_populates="spaces")
     user: Mapped["User | None"] = relationship(foreign_keys=[user_id])
-    repos: Mapped[list["TrackedRepo"]] = relationship(back_populates="space")
 
 
 class TrackedRepo(Base):
@@ -91,16 +112,10 @@ class TrackedRepo(Base):
     default_branch: Mapped[str] = mapped_column(String(255), default="main")
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    space_id: Mapped[int | None] = mapped_column(
-        ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
-    )
-    user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    visibility: Mapped[str] = mapped_column(String(20), nullable=False, server_default="private")
 
-    space: Mapped["Space | None"] = relationship(back_populates="repos")
-    user: Mapped["User | None"] = relationship(foreign_keys=[user_id])
+    trackers: Mapped[list["RepoTracker"]] = relationship(
+        back_populates="repo", cascade="all, delete-orphan"
+    )
     pull_requests: Mapped[list["PullRequest"]] = relationship(back_populates="repo")
     stacks: Mapped[list["PRStack"]] = relationship(back_populates="repo")
 

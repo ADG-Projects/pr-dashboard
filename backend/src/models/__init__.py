@@ -2,6 +2,7 @@
 
 from src.models.tables import (
     CheckRun,
+    GitHubAccount,
     PRStack,
     PRStackMembership,
     PullRequest,
@@ -10,11 +11,11 @@ from src.models.tables import (
     Space,
     TrackedRepo,
     User,
-    UserProgress,
 )
 
 __all__ = [
     "CheckRun",
+    "GitHubAccount",
     "PRStack",
     "PRStackMembership",
     "PullRequest",
@@ -23,5 +24,4 @@ __all__ = [
     "Space",
     "TrackedRepo",
     "User",
-    "UserProgress",
 ]

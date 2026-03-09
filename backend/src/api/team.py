@@ -3,10 +3,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from src.api.schemas import UserOut, UserUpdate
+from src.api.schemas import LinkedAccount, UserOut, UserUpdate
 from src.db.engine import get_session
-from src.models.tables import User
+from src.models.tables import GitHubAccount, User
 
 router = APIRouter(prefix="/api/team", tags=["team"])
 
@@ -15,8 +16,18 @@ router = APIRouter(prefix="/api/team", tags=["team"])
 async def list_users(
     session: AsyncSession = Depends(get_session),
 ) -> list[UserOut]:
-    """List all users (created via GitHub OAuth login)."""
-    users = (await session.execute(select(User).order_by(User.login))).scalars().all()
+    """List all users (from OAuth login and auto-discovered reviewers)."""
+    users = (
+        (
+            await session.execute(
+                select(User)
+                .options(selectinload(User.github_accounts).selectinload(GitHubAccount.spaces))
+                .order_by(User.login)
+            )
+        )
+        .scalars()
+        .all()
+    )
     return [
         UserOut(
             id=u.id,
@@ -25,6 +36,14 @@ async def list_users(
             avatar_url=u.avatar_url,
             is_active=u.is_active,
             created_at=u.created_at,
+            linked_accounts=[
+                LinkedAccount(
+                    login=ga.login,
+                    avatar_url=ga.avatar_url,
+                    space_slugs=[s.slug for s in ga.spaces],
+                )
+                for ga in u.github_accounts
+            ],
         )
         for u in users
     ]

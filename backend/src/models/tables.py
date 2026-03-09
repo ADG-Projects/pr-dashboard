@@ -33,7 +33,6 @@ class User(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
-    progress: Mapped[list["UserProgress"]] = relationship(back_populates="user")
     github_accounts: Mapped[list["GitHubAccount"]] = relationship(back_populates="user")
 
 
@@ -150,9 +149,6 @@ class PullRequest(Base):
     github_requested_reviewers: Mapped[list | None] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"), default=list
     )
-    user_progress: Mapped[list["UserProgress"]] = relationship(
-        back_populates="pull_request", cascade="all, delete-orphan"
-    )
     quality_snapshots: Mapped[list["QualitySnapshot"]] = relationship(
         back_populates="pull_request", cascade="all, delete-orphan"
     )
@@ -193,7 +189,9 @@ class PRStack(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     repo_id: Mapped[int] = mapped_column(ForeignKey("tracked_repos.id", ondelete="CASCADE"))
     name: Mapped[str | None] = mapped_column(String(255))
-    root_pr_id: Mapped[int | None] = mapped_column(ForeignKey("pull_requests.id"))
+    root_pr_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pull_requests.id", ondelete="SET NULL")
+    )
     detected_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -212,31 +210,15 @@ class PRStackMembership(Base):
     stack_id: Mapped[int] = mapped_column(ForeignKey("pr_stacks.id", ondelete="CASCADE"))
     pull_request_id: Mapped[int] = mapped_column(ForeignKey("pull_requests.id", ondelete="CASCADE"))
     position: Mapped[int] = mapped_column(Integer, nullable=False)
-    parent_pr_id: Mapped[int | None] = mapped_column(ForeignKey("pull_requests.id"))
+    parent_pr_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pull_requests.id", ondelete="SET NULL")
+    )
 
     stack: Mapped["PRStack"] = relationship(back_populates="memberships")
     pull_request: Mapped["PullRequest"] = relationship(
         foreign_keys=[pull_request_id], back_populates="stack_memberships"
     )
     parent_pr: Mapped["PullRequest | None"] = relationship(foreign_keys=[parent_pr_id])
-
-
-class UserProgress(Base):
-    __tablename__ = "user_progress"
-    __table_args__ = (UniqueConstraint("pull_request_id", "user_id", name="uq_pr_user_progress"),)
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    pull_request_id: Mapped[int] = mapped_column(ForeignKey("pull_requests.id", ondelete="CASCADE"))
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
-    approved: Mapped[bool] = mapped_column(Boolean, default=False)
-    notes: Mapped[str | None] = mapped_column(Text)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-    pull_request: Mapped["PullRequest"] = relationship(back_populates="user_progress")
-    user: Mapped["User"] = relationship(back_populates="progress")
 
 
 class QualitySnapshot(Base):

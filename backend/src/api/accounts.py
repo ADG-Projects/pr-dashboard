@@ -233,10 +233,21 @@ async def remove_account(
 
     account.is_active = False
 
-    # Delete all spaces for this account — re-login will rediscover them
+    # Delete tracked repos that belong to this account's spaces (cascades to PRs/stacks),
+    # then delete the spaces themselves. Re-login will rediscover them.
     from sqlalchemy import delete
 
-    await session.execute(delete(Space).where(Space.github_account_id == account_id))
+    space_ids = (
+        (await session.execute(select(Space.id).where(Space.github_account_id == account_id)))
+        .scalars()
+        .all()
+    )
+
+    if space_ids:
+        from src.models.tables import TrackedRepo
+
+        await session.execute(delete(TrackedRepo).where(TrackedRepo.space_id.in_(space_ids)))
+        await session.execute(delete(Space).where(Space.id.in_(space_ids)))
 
     await session.commit()
-    logger.info(f"Deactivated GitHub account and deleted its spaces: {account.login}")
+    logger.info(f"Deactivated GitHub account and deleted its spaces/repos: {account.login}")

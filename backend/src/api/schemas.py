@@ -167,6 +167,12 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class LinkedAccount(BaseModel):
+    login: str
+    avatar_url: str | None
+    space_slugs: list[str] = []
+
+
 class UserOut(BaseModel):
     id: int
     login: str
@@ -174,27 +180,7 @@ class UserOut(BaseModel):
     avatar_url: str | None
     is_active: bool
     created_at: datetime
-
-
-# ── Progress ─────────────────────────────────────────────────
-
-
-class ProgressUpdate(BaseModel):
-    user_id: int
-    reviewed: bool | None = None
-    approved: bool | None = None
-    notes: str | None = None
-
-
-class ProgressOut(BaseModel):
-    id: int
-    pull_request_id: int
-    user_id: int
-    user_name: str = ""
-    reviewed: bool
-    approved: bool
-    notes: str | None
-    updated_at: datetime
+    linked_accounts: list[LinkedAccount] = []
 
 
 # ── Quality ──────────────────────────────────────────────────
@@ -215,6 +201,11 @@ class QualitySnapshotOut(BaseModel):
 
 class AssigneeUpdate(BaseModel):
     assignee_id: int | None = None
+
+
+class ReviewerUpdate(BaseModel):
+    add_user_ids: list[int] = []
+    remove_logins: list[str] = []
 
 
 # ── Auth ─────────────────────────────────────────────────────

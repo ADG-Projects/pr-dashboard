@@ -12,6 +12,7 @@ from src.api.schemas import (
     AssigneeUpdate,
     CheckRunOut,
     PRDetail,
+    PriorityUpdate,
     PRSummary,
     ReviewerUpdate,
     ReviewOut,
@@ -146,6 +147,7 @@ def _pr_to_summary(pr: PullRequest, stack_id: int | None = None) -> PRSummary:
         github_requested_reviewers=pr.github_requested_reviewers or [],
         rebased_since_approval=_rebased_since_approval(pr),
         merged_at=pr.merged_at,
+        manual_priority=pr.manual_priority,
     )
 
 
@@ -254,6 +256,7 @@ async def get_pull(
         assignee_name=(pr.assignee.name or pr.assignee.login) if pr.assignee else None,
         github_requested_reviewers=pr.github_requested_reviewers or [],
         rebased_since_approval=_rebased_since_approval(pr),
+        manual_priority=pr.manual_priority,
         check_runs=[
             CheckRunOut(
                 id=c.id,
@@ -420,3 +423,62 @@ async def update_reviewers(
     )
 
     return {"github_requested_reviewers": pr.github_requested_reviewers or []}
+
+
+@router.patch("/pulls/{number}/priority", response_model=PRSummary)
+async def update_priority(
+    repo_id: int,
+    number: int,
+    body: PriorityUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> PRSummary:
+    """Set or clear the manual priority for a PR — syncs labels to GitHub."""
+    if body.priority is not None and body.priority not in ("high", "low"):
+        raise HTTPException(status_code=422, detail="priority must be 'high', 'low', or null")
+
+    result = await session.execute(
+        select(PullRequest)
+        .options(
+            selectinload(PullRequest.check_runs),
+            selectinload(PullRequest.reviews),
+            joinedload(PullRequest.assignee),
+        )
+        .where(PullRequest.repo_id == repo_id, PullRequest.number == number)
+    )
+    pr = result.scalar_one_or_none()
+    if not pr:
+        raise HTTPException(status_code=404, detail=f"PR #{number} not found")
+
+    old_priority = pr.manual_priority
+
+    # Sync labels to GitHub
+    gh, repo = await _get_github_client_for_pr(session, repo_id)
+    try:
+        # Remove old priority label if it changed
+        if old_priority and old_priority != body.priority:
+            await gh.remove_label(repo.owner, repo.name, number, f"priority:{old_priority}")
+
+        # Add new priority label
+        if body.priority:
+            await gh.add_labels(repo.owner, repo.name, number, [f"priority:{body.priority}"])
+    except Exception as exc:
+        logger.warning(f"Failed to sync priority labels on GitHub for PR #{number}: {exc}")
+        raise HTTPException(status_code=502, detail="GitHub API error") from exc
+    finally:
+        await gh.close()
+
+    pr.manual_priority = body.priority
+    await session.commit()
+
+    membership = (
+        await session.execute(
+            select(PRStackMembership).where(PRStackMembership.pull_request_id == pr.id)
+        )
+    ).scalar_one_or_none()
+
+    await broadcast_event(
+        "priority_update",
+        {"repo_id": repo_id, "number": number, "priority": body.priority},
+    )
+
+    return _pr_to_summary(pr, membership.stack_id if membership else None)

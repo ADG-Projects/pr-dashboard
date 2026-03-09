@@ -18,6 +18,7 @@ export function Shell() {
   const qc = useQueryClient();
   useSSE();
   const isHome = location.pathname === '/';
+  const isPrioritize = location.pathname === '/prioritize';
   const [showTeam, setShowTeam] = useState(false);
   const [showSpaces, setShowSpaces] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -73,6 +74,9 @@ export function Shell() {
         <nav className={styles.nav}>
           <Tooltip text="View all tracked repositories" position="bottom">
             <Link to="/" className={isHome ? styles.active : ''}>Repos</Link>
+          </Tooltip>
+          <Tooltip text="Cross-repo priority queue for review and merge order" position="bottom">
+            <Link to="/prioritize" className={isPrioritize ? styles.active : ''}>Prioritize</Link>
           </Tooltip>
           <Tooltip text="Manage GitHub connections" position="bottom">
             <button className={styles.teamBtn} onClick={() => setShowSpaces(true)}>Spaces</button>

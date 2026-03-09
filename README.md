@@ -15,6 +15,7 @@ GitHub PR management dashboard with multi-space support, hierarchical navigation
 - **Live sync** — background sync every 3 min (configurable), with SSE broadcasts for real-time UI updates
 - **PR detail panel** — slide-out panel with diff stats, CI checks, reviews, and tracking toggles
 - **Filtering** — filter by author, CI status, stack, and assignee
+- **Priority queue** — cross-repo ranked view of all open PRs by computed priority score (review readiness, CI, size, mergeability, age, rebase status, draft penalty), with stack-aware ordering that respects parent-child dependencies
 - **Token encryption** — Fernet-based encryption for all stored GitHub tokens
 
 ## Architecture
@@ -81,7 +82,7 @@ uv run alembic upgrade head
 ```
 backend/
   src/
-    api/          # FastAPI routes (repos, spaces, pulls, stacks, team, progress, auth, events)
+    api/          # FastAPI routes (repos, spaces, pulls, stacks, team, prioritize, auth, events)
     config/       # Pydantic settings
     db/           # SQLAlchemy engine + base
     models/       # ORM models (tables.py)
@@ -91,7 +92,7 @@ frontend/
   src/
     api/          # API client, types, SSE hook
     components/   # Shell, SpaceManager, StatusDot, PRDetailPanel, DependencyGraph
-    pages/        # OrgOverview, RepoView
+    pages/        # OrgOverview, RepoView, PrioritizeView
     store/        # Zustand UI state
     styles/       # CSS tokens + global styles
 ```

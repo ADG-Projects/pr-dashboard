@@ -133,6 +133,7 @@ class PRSummary(BaseModel):
     github_requested_reviewers: list[dict] = []
     rebased_since_approval: bool = False
     merged_at: datetime | None = None
+    manual_priority: str | None = None
 
 
 class PRDetail(PRSummary):
@@ -199,6 +200,33 @@ class QualitySnapshotOut(BaseModel):
 
 
 # ── Assignee ─────────────────────────────────────────────────
+
+
+class PriorityBreakdown(BaseModel):
+    review: int
+    ci: int
+    size: int
+    mergeable: int
+    age: int
+    rebase: int
+    draft_penalty: int
+
+
+class PrioritizedPROut(BaseModel):
+    pr: PRSummary
+    repo_full_name: str
+    repo_id: int
+    priority_score: int
+    priority_breakdown: PriorityBreakdown
+    merge_position: int
+    blocked_by_pr_id: int | None = None
+    stack_id: int | None = None
+    stack_name: str | None = None
+    priority_tier: str = "normal"
+
+
+class PriorityUpdate(BaseModel):
+    priority: str | None = None
 
 
 class AssigneeUpdate(BaseModel):

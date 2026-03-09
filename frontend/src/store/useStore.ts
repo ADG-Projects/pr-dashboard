@@ -7,6 +7,10 @@ interface AppState {
   selectedPrId: number | null;
   selectPr: (id: number | null) => void;
 
+  /** Repo ID for cross-repo PR detail panel (e.g. prioritize view) */
+  selectedRepoId: number | null;
+  setSelectedRepoId: (id: number | null) => void;
+
   /** Detail panel open state */
   detailOpen: boolean;
   setDetailOpen: (open: boolean) => void;
@@ -19,6 +23,9 @@ interface AppState {
 export const useStore = create<AppState>((set) => ({
   selectedPrId: null,
   selectPr: (id) => set({ selectedPrId: id, detailOpen: id !== null }),
+
+  selectedRepoId: null,
+  setSelectedRepoId: (id) => set({ selectedRepoId: id }),
 
   detailOpen: false,
   setDetailOpen: (open) => set({ detailOpen: open, selectedPrId: open ? undefined : null }),

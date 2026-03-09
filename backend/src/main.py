@@ -14,6 +14,7 @@ from src.api.accounts import router as accounts_router
 from src.api.auth import AuthMiddleware
 from src.api.auth import router as auth_router
 from src.api.events import router as events_router
+from src.api.prioritize import router as prioritize_router
 from src.api.pulls import router as pulls_router
 from src.api.repos import router as repos_router
 from src.api.spaces import router as spaces_router
@@ -61,6 +62,7 @@ app.include_router(accounts_router)
 app.include_router(repos_router)
 app.include_router(spaces_router)
 app.include_router(pulls_router)
+app.include_router(prioritize_router)
 app.include_router(team_router)
 app.include_router(stacks_router)
 app.include_router(events_router)

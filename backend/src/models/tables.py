@@ -164,6 +164,7 @@ class PullRequest(Base):
     github_requested_reviewers: Mapped[list | None] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"), default=list
     )
+    manual_priority: Mapped[str | None] = mapped_column(String(10), nullable=True)
     quality_snapshots: Mapped[list["QualitySnapshot"]] = relationship(
         back_populates="pull_request", cascade="all, delete-orphan"
     )

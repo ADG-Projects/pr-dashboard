@@ -93,6 +93,7 @@ export interface PRSummary {
   github_requested_reviewers: { login: string; avatar_url: string | null }[];
   rebased_since_approval: boolean;
   merged_at: string | null;
+  manual_priority: string | null;
 }
 
 export interface CheckRun {
@@ -152,6 +153,29 @@ export interface AuthStatus {
   authenticated: boolean;
   auth_enabled: boolean;
   user: GitHubUser | null;
+}
+
+export interface PriorityBreakdown {
+  review: number;
+  ci: number;
+  size: number;
+  mergeable: number;
+  age: number;
+  rebase: number;
+  draft_penalty: number;
+}
+
+export interface PrioritizedPR {
+  pr: PRSummary;
+  repo_full_name: string;
+  repo_id: number;
+  priority_score: number;
+  priority_breakdown: PriorityBreakdown;
+  merge_position: number;
+  blocked_by_pr_id: number | null;
+  stack_id: number | null;
+  stack_name: string | null;
+  priority_tier: string;
 }
 
 // ── API functions ────────────────────────────────
@@ -217,6 +241,12 @@ export const api = {
   syncRepo: (id: number) =>
     request<{ status: string }>(`/api/repos/${id}/sync`, { method: 'POST' }),
 
+  // Prioritization
+  listPrioritized: (repoId?: number) => {
+    const qs = repoId ? `?repo_id=${repoId}` : '';
+    return request<PrioritizedPR[]>(`/api/pulls/prioritized${qs}`);
+  },
+
   // PRs
   listPulls: (repoId: number, params?: Record<string, string>) => {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
@@ -249,6 +279,13 @@ export const api = {
     request<PRSummary>(`/api/repos/${repoId}/pulls/${number}/assignee`, {
       method: 'PATCH',
       body: JSON.stringify({ assignee_id: assigneeId }),
+    }),
+
+  // Priority
+  setPriority: (repoId: number, number: number, priority: string | null) =>
+    request<PRSummary>(`/api/repos/${repoId}/pulls/${number}/priority`, {
+      method: 'PATCH',
+      body: JSON.stringify({ priority }),
     }),
 
   // Reviewers

@@ -171,6 +171,23 @@ class GitHubClient:
             json={"reviewers": logins},
         )
 
+    async def add_labels(
+        self, owner: str, repo: str, issue_number: int, labels: list[str]
+    ) -> list[dict[str, Any]]:
+        """Add labels to an issue/PR."""
+        return await self._post_json(
+            f"/repos/{owner}/{repo}/issues/{issue_number}/labels",
+            json={"labels": labels},
+        )
+
+    async def remove_label(self, owner: str, repo: str, issue_number: int, label: str) -> None:
+        """Remove a single label from an issue/PR."""
+        client = await self._ensure_client()
+        resp = await client.delete(f"/repos/{owner}/{repo}/issues/{issue_number}/labels/{label}")
+        # 404 means the label wasn't present — that's fine
+        if resp.status_code != 404:
+            resp.raise_for_status()
+
 
 def parse_gh_datetime(value: str | None) -> datetime | None:
     """Parse GitHub's ISO 8601 datetime string."""

@@ -241,6 +241,26 @@
   background: rgba(139, 92, 246, 0.06);
 }
 
+.priorityHighBadge {
+  font-size: 0.55rem;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(248, 113, 113, 0.2);
+  color: var(--accent-red);
+  font-weight: 700;
+  margin-left: auto;
+}
+
+.priorityLowBadge {
+  font-size: 0.55rem;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(108, 117, 125, 0.2);
+  color: var(--text-dim);
+  font-weight: 700;
+  margin-left: auto;
+}
+
 .badgeWarn {
   font-size: 0.5rem;
   font-weight: 700;

@@ -90,6 +90,15 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
     onSuccess: invalidatePr,
   });
 
+  const priorityMutation = useMutation({
+    mutationFn: (priority: string | null) =>
+      api.setPriority(repoId, prSummary!.number, priority),
+    onSuccess: () => {
+      invalidatePr();
+      qc.invalidateQueries({ queryKey: ['prioritized'] });
+    },
+  });
+
   // Team members not already requested as reviewers
   const currentReviewerLogins = new Set(
     pr?.github_requested_reviewers.map((r) => r.login) || [],
@@ -128,6 +137,30 @@ export function PRDetailPanel({ repoId, prId, onClose }: Props) {
 
       {pr && (
         <div className={styles.body}>
+          {/* Priority */}
+          <section className={styles.section}>
+            <h3>Priority</h3>
+            <div className={styles.priorityToggle}>
+              {(['high', null, 'low'] as const).map((val) => {
+                const label = val === 'high' ? 'High' : val === 'low' ? 'Low' : 'Normal';
+                const current = prSummary?.manual_priority ?? null;
+                const isActive = current === val;
+                return (
+                  <button
+                    key={label}
+                    className={`${styles.priorityBtn} ${isActive ? styles[`priorityBtn${label}`] : ''}`}
+                    onClick={() => {
+                      if (!isActive) priorityMutation.mutate(val);
+                    }}
+                    disabled={priorityMutation.isPending}
+                  >
+                    {val === 'high' && '\u2191 '}{val === 'low' && '\u2193 '}{label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
           {/* Reviewers */}
           <section className={styles.section}>
             <Tooltip text="Requested reviewers — synced with GitHub" position="right">

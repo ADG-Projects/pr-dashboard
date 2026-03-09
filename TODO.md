@@ -1,6 +1,7 @@
 # PR Dashboard — TODO
 
 ## Completed
+- [x] PR prioritization: cross-repo priority queue ranking all open PRs by computed score (review readiness, CI, size, mergeability, age, rebase, draft penalty), stack-aware merge/review order respecting parent-child dependencies, score breakdown tooltip, new `/prioritize` page with summary bar and ranked list (2026-03-09)
 - [x] Custom filter dropdowns + PR state filter + merged PR support: author filter converted to custom avatar dropdown matching reviewer style, new combined state filter (all open, needs review, reviewed, approved, changes requested, draft, recently merged), backend supports returning merged PRs via include_merged_days param, merged PR cards shown with purple border and badge (2026-03-09)
 - [x] Collaborative repo ownership + dev impersonation: RepoTracker junction table lets multiple users independently track the same repo with their own token/space; sync uses token fallback across trackers; dev-mode impersonation endpoint + seed script for multi-user testing; frontend dev user switcher (2026-03-09)
 - [x] Remove local overrides — sync everything with GitHub: assignees synced from GitHub during sync, assignee/reviewer changes write back to GitHub API, UserProgress table dropped (dashboard mirrors GitHub review state), card assignee display is read-only (edit in detail panel only) (2026-03-09)

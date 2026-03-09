@@ -257,3 +257,46 @@
   color: var(--text-dim);
   opacity: 0.8;
 }
+
+/* Priority toggle */
+.priorityToggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.priorityBtn {
+  flex: 1;
+  background: var(--bg-input);
+  border: none;
+  border-right: 1px solid var(--border-default);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-family: inherit;
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.priorityBtn:last-child { border-right: none; }
+.priorityBtn:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.priorityBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.priorityBtnHigh {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--accent-red);
+  font-weight: 600;
+}
+
+.priorityBtnNormal {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.priorityBtnLow {
+  background: rgba(108, 117, 125, 0.15);
+  color: var(--text-dim);
+  font-weight: 600;
+}

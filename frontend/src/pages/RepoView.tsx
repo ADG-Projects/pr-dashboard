@@ -20,6 +20,7 @@ export function RepoView() {
   const [ciFilter, setCiFilter] = useState('');
   const [stackFilter, setStackFilter] = useState<number | null>(null);
   const [reviewerFilter, setReviewerFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
   const [stateFilter, setStateFilter] = useState('open');
   const [renamingStack, setRenamingStack] = useState(false);
   const [renameValue, setRenameValue] = useState('');
@@ -132,6 +133,9 @@ export function RepoView() {
   // Hard filters: CI and state; author/reviewer dim cards
   let filtered = pulls || [];
   if (ciFilter) filtered = filtered.filter((p: PRSummary) => p.ci_status === ciFilter);
+  if (priorityFilter === 'high') filtered = filtered.filter((p: PRSummary) => p.manual_priority === 'high');
+  else if (priorityFilter === 'normal') filtered = filtered.filter((p: PRSummary) => p.manual_priority == null || (p.manual_priority !== 'high' && p.manual_priority !== 'low'));
+  else if (priorityFilter === 'low') filtered = filtered.filter((p: PRSummary) => p.manual_priority === 'low');
   if (stateFilter === 'open') filtered = filtered.filter((p: PRSummary) => p.state === 'open');
   else if (stateFilter === 'needs_review') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.review_state === 'none' && !p.draft);
   else if (stateFilter === 'reviewed') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.review_state === 'reviewed');
@@ -251,6 +255,14 @@ export function RepoView() {
               <option value="success">Passing</option>
               <option value="failure">Failing</option>
               <option value="pending">Pending</option>
+            </select>
+          </Tooltip>
+          <Tooltip text="Filter PRs by manual priority" position="bottom">
+            <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className={styles.select}>
+              <option value="">All priorities</option>
+              <option value="high">High</option>
+              <option value="normal">Normal</option>
+              <option value="low">Low</option>
             </select>
           </Tooltip>
           <Tooltip text="Filters PRs by review state or merged status" position="bottom">

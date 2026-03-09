@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Shell } from './components/Shell';
 import { OrgOverview } from './pages/OrgOverview';
+import { PrioritizeView } from './pages/PrioritizeView';
 import { RepoView } from './pages/RepoView';
 import { Login } from './pages/Login';
 import type { GitHubUser } from './api/client';
@@ -73,6 +74,7 @@ export default function App() {
           <Routes>
             <Route element={<Shell />}>
               <Route path="/" element={<OrgOverview />} />
+              <Route path="/prioritize" element={<PrioritizeView />} />
               <Route path="/repos/:owner/:name" element={<RepoView />} />
               <Route path="/repos/:owner/:name/stacks/:stackId" element={<StackRedirect />} />
             </Route>

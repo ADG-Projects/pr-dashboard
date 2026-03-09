@@ -274,6 +274,15 @@ class SyncService:
         # Resolve assignee from GitHub
         assignee_id = await self._resolve_assignee(session, gh_pr)
 
+        # Derive manual_priority from GitHub labels
+        label_names = {lbl["name"] for lbl in (gh_pr.get("labels") or [])}
+        if "priority:high" in label_names:
+            manual_priority = "high"
+        elif "priority:low" in label_names:
+            manual_priority = "low"
+        else:
+            manual_priority = None
+
         if pr is None:
             pr = PullRequest(
                 repo_id=repo_id,
@@ -295,6 +304,7 @@ class SyncService:
                 last_synced_at=now,
                 github_requested_reviewers=new_reviewers,
                 assignee_id=assignee_id,
+                manual_priority=manual_priority,
             )
             session.add(pr)
             await session.flush()
@@ -310,6 +320,7 @@ class SyncService:
             pr.last_synced_at = now
             pr.github_requested_reviewers = new_reviewers
             pr.assignee_id = assignee_id
+            pr.manual_priority = manual_priority
 
         return pr
 

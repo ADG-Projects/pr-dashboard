@@ -15,7 +15,7 @@ export function RepoView() {
   const { owner, name } = useParams<{ owner: string; name: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { selectedPrNumber, selectPr } = useStore();
+  const { selectedPrNumber, selectPr, setLastRepoPath } = useStore();
   const { user: currentUser } = useCurrentUser();
 
   const [authorFilter, setAuthorFilter] = useState('');
@@ -41,6 +41,11 @@ export function RepoView() {
   const priorityDropdownRef = useRef<HTMLDivElement>(null);
   const stackDropdownRef = useRef<HTMLDivElement>(null);
   const repoDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Remember this repo path so the "Repos" nav link can return here
+  useEffect(() => {
+    if (owner && name) setLastRepoPath(`/repos/${owner}/${name}`);
+  }, [owner, name, setLastRepoPath]);
 
   const hasActiveFilters = authorFilter !== '' || ciFilter !== '' || stackFilter !== null || reviewerFilter !== '' || priorityFilter !== '' || stateFilter !== 'open';
 
@@ -614,7 +619,7 @@ export function RepoView() {
       </div>
 
       {selectedPrNumber && repo && (
-        <PRDetailPanel repoId={repo.id} prNumber={selectedPrNumber} onClose={() => selectPr(null)} />
+        <PRDetailPanel repoId={repo.id} prNumber={selectedPrNumber} onClose={() => selectPr(null)} showRepoLink={false} />
       )}
     </div>
   );

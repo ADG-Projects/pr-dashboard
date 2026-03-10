@@ -12,9 +12,10 @@ interface Props {
   repoId: number;
   prNumber: number;
   onClose: () => void;
+  showRepoLink?: boolean;
 }
 
-export function PRDetailPanel({ repoId, prNumber, onClose }: Props) {
+export function PRDetailPanel({ repoId, prNumber, onClose, showRepoLink = true }: Props) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [addReviewerOpen, setAddReviewerOpen] = useState(false);
@@ -198,7 +199,7 @@ export function PRDetailPanel({ repoId, prNumber, onClose }: Props) {
                 <span className={styles.branchName}>{pr.base_ref}</span>
               </Tooltip>
             </div>
-            {repo && (
+            {showRepoLink && repo && (
               <button
                 className={styles.repoViewLink}
                 onClick={() => navigate(`/repos/${repo.owner}/${repo.name}`)}

@@ -1,11 +1,12 @@
 /** App shell — sidebar nav + header + content area. */
 
-import { useState, useEffect, useRef } from 'react';
-import { Link, Outlet, useLocation } from 'react-router-dom';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSSE } from '../api/useSSE';
 import { useCurrentUser } from '../App';
 import { api } from '../api/client';
+import { useStore } from '../store/useStore';
 import { TeamPanel } from './TeamPanel';
 import { SpaceManager } from './SpaceManager';
 import { Tooltip } from './Tooltip';
@@ -15,10 +16,25 @@ import styles from './Shell.module.css';
 
 export function Shell() {
   const location = useLocation();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const { connected } = useSSE();
-  const isHome = location.pathname === '/';
-  const isPrioritize = location.pathname === '/prioritize';
+  const isReposSection = location.pathname === '/' || location.pathname.startsWith('/repos');
+  const isPrioritize = location.pathname === '/prioritise' || location.pathname === '/prioritize';
+  const lastRepoPath = useStore((s) => s.lastRepoPath);
+
+  const handleReposClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    if (isReposSection && lastRepoPath && location.pathname === lastRepoPath) {
+      // Already on the last repo, go to root
+      navigate('/');
+    } else if (lastRepoPath && !isReposSection) {
+      // Coming from another section, go back to last repo
+      navigate(lastRepoPath);
+    } else {
+      navigate('/');
+    }
+  }, [isReposSection, lastRepoPath, location.pathname, navigate]);
   const [showTeam, setShowTeam] = useState(false);
   const [showSpaces, setShowSpaces] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -85,10 +101,10 @@ export function Shell() {
         )}
         <nav className={styles.nav}>
           <Tooltip text="View all tracked repositories" position="bottom">
-            <Link to="/" className={isHome ? styles.active : ''}>Repos</Link>
+            <a href="/" className={isReposSection ? styles.active : ''} onClick={handleReposClick}>Repos</a>
           </Tooltip>
           <Tooltip text="Cross-repo priority queue for review and merge order" position="bottom">
-            <Link to="/prioritize" className={isPrioritize ? styles.active : ''}>Prioritize</Link>
+            <Link to="/prioritise" className={isPrioritize ? styles.active : ''}>Prioritise</Link>
           </Tooltip>
           <Tooltip text="Manage GitHub connections" position="bottom">
             <button className={styles.teamBtn} onClick={() => setShowSpaces(true)}>Spaces</button>

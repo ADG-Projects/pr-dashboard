@@ -130,7 +130,8 @@ export default function App() {
           <Routes>
             <Route element={<Shell />}>
               <Route path="/" element={<OrgOverview />} />
-              <Route path="/prioritize" element={<PrioritizeView />} />
+              <Route path="/prioritise" element={<PrioritizeView />} />
+              <Route path="/prioritize" element={<Navigate to="/prioritise" replace />} />
               <Route path="/repos/:owner/:name" element={<RepoView />} />
               <Route path="/repos/:owner/:name/stacks/:stackId" element={<StackRedirect />} />
             </Route>

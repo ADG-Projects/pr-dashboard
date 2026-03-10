@@ -253,22 +253,31 @@ export function RepoView() {
                 className={`${styles.filterTrigger} ${styles.repoTrigger}`}
                 onClick={() => setRepoDropdownOpen(!repoDropdownOpen)}
               >
-                <span>{`${owner}/${name}`}</span>
+                <span>{name}</span>
                 <span className={styles.filterChevron}>{repoDropdownOpen ? '\u25B4' : '\u25BE'}</span>
               </button>
               {repoDropdownOpen && (
                 <div className={styles.filterMenu}>
-                  {(repos || []).map((r: RepoSummary) => (
-                    <div
-                      key={r.id}
-                      className={`${styles.filterMenuItem} ${r.full_name === `${owner}/${name}` ? styles.filterMenuItemActive : ''}`}
-                      onClick={() => {
-                        const [o, n] = r.full_name.split('/');
-                        navigate(`/repos/${o}/${n}`);
-                        setRepoDropdownOpen(false);
-                      }}
-                    >
-                      <span>{r.full_name}</span>
+                  {Object.entries(
+                    (repos || []).reduce<Record<string, RepoSummary[]>>((groups, r) => {
+                      (groups[r.owner] ??= []).push(r);
+                      return groups;
+                    }, {})
+                  ).map(([ownerGroup, groupRepos]) => (
+                    <div key={ownerGroup}>
+                      <div className={styles.filterMenuGroupHeader}>{ownerGroup}</div>
+                      {groupRepos.map((r) => (
+                        <div
+                          key={r.id}
+                          className={`${styles.filterMenuItem} ${styles.filterMenuItemIndented} ${r.full_name === `${owner}/${name}` ? styles.filterMenuItemActive : ''}`}
+                          onClick={() => {
+                            navigate(`/repos/${r.owner}/${r.name}`);
+                            setRepoDropdownOpen(false);
+                          }}
+                        >
+                          <span>{r.name}</span>
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>

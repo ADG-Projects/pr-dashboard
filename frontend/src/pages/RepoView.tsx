@@ -288,7 +288,7 @@ export function RepoView() {
 
         <div className={styles.filters}>
           {/* 1. State */}
-          <Tooltip text="Filters PRs by review state or merged status" position="bottom">
+          <Tooltip text="Filters PRs by review state or merged status" position="bottom" disabled={stateDropdownOpen}>
             <div className={styles.filterDropdown} ref={stateDropdownRef}>
               <button
                 className={styles.filterTrigger}
@@ -315,7 +315,7 @@ export function RepoView() {
           </Tooltip>
 
           {/* 2. Author */}
-          <Tooltip text="Dims non-matching PR cards" position="bottom">
+          <Tooltip text="Dims non-matching PR cards" position="bottom" disabled={authorDropdownOpen}>
             <div className={styles.filterDropdown} ref={authorDropdownRef}>
               <button
                 className={styles.filterTrigger}
@@ -363,7 +363,7 @@ export function RepoView() {
           </Tooltip>
 
           {/* 3. Reviewer */}
-          <Tooltip text="Dims PRs not requesting this reviewer" position="bottom">
+          <Tooltip text="Dims PRs not requesting this reviewer" position="bottom" disabled={reviewerDropdownOpen}>
             <div className={styles.filterDropdown} ref={reviewerDropdownRef}>
               <button
                 className={styles.filterTrigger}
@@ -416,7 +416,7 @@ export function RepoView() {
           </Tooltip>
 
           {/* 4. CI */}
-          <Tooltip text="Hides non-matching PRs" position="bottom">
+          <Tooltip text="Hides non-matching PRs" position="bottom" disabled={ciDropdownOpen}>
             <div className={styles.filterDropdown} ref={ciDropdownRef}>
               <button
                 className={styles.filterTrigger}
@@ -443,7 +443,7 @@ export function RepoView() {
           </Tooltip>
 
           {/* 5. Priority */}
-          <Tooltip text="Filter PRs by manual priority" position="bottom">
+          <Tooltip text="Filter PRs by manual priority" position="bottom" disabled={priorityDropdownOpen}>
             <div className={styles.filterDropdown} ref={priorityDropdownRef}>
               <button
                 className={styles.filterTrigger}
@@ -470,7 +470,7 @@ export function RepoView() {
           </Tooltip>
 
           {/* 6. Stack */}
-          <Tooltip text="Highlight a stack of dependent PRs" position="bottom">
+          <Tooltip text="Highlight a stack of dependent PRs" position="bottom" disabled={stackDropdownOpen}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               {renamingStack && stackFilter ? (
                 <input

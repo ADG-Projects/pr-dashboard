@@ -1,6 +1,6 @@
-/** CSS-only tooltip wrapper. Wrap any element to show a tooltip on hover. */
+/** Tooltip wrapper with viewport-aware positioning via fixed positioning. */
 
-import type { ReactNode, CSSProperties } from 'react';
+import { useRef, useCallback, type ReactNode, type CSSProperties } from 'react';
 import styles from './Tooltip.module.css';
 
 interface Props {
@@ -8,12 +8,69 @@ interface Props {
   children: ReactNode;
   position?: 'top' | 'bottom' | 'left' | 'right';
   style?: CSSProperties;
+  disabled?: boolean;
 }
 
-export function Tooltip({ text, children, position = 'top', style }: Props) {
+const GAP = 6;
+const EDGE_PAD = 6;
+
+export function Tooltip({ text, children, position = 'top', style, disabled }: Props) {
+  const tipRef = useRef<HTMLSpanElement>(null);
+  const wrapperRef = useRef<HTMLSpanElement>(null);
+
+  const reposition = useCallback(() => {
+    const tip = tipRef.current;
+    const wrapper = wrapperRef.current;
+    if (!tip || !wrapper) return;
+
+    const anchor = wrapper.getBoundingClientRect();
+    const tipRect = tip.getBoundingClientRect();
+    const tw = tipRect.width;
+    const th = tipRect.height;
+
+    let top = 0;
+    let left = 0;
+
+    if (position === 'top') {
+      top = anchor.top - th - GAP;
+      left = anchor.left + anchor.width / 2 - tw / 2;
+    } else if (position === 'bottom') {
+      top = anchor.bottom + GAP;
+      left = anchor.left + anchor.width / 2 - tw / 2;
+    } else if (position === 'left') {
+      top = anchor.top + anchor.height / 2 - th / 2;
+      left = anchor.left - tw - GAP;
+    } else {
+      top = anchor.top + anchor.height / 2 - th / 2;
+      left = anchor.right + GAP;
+    }
+
+    // Clamp to viewport
+    if (left < EDGE_PAD) left = EDGE_PAD;
+    else if (left + tw > window.innerWidth - EDGE_PAD)
+      left = window.innerWidth - EDGE_PAD - tw;
+
+    if (top < EDGE_PAD) top = EDGE_PAD;
+    else if (top + th > window.innerHeight - EDGE_PAD)
+      top = window.innerHeight - EDGE_PAD - th;
+
+    tip.style.top = `${top}px`;
+    tip.style.left = `${left}px`;
+  }, [position]);
+
   return (
-    <span className={styles.wrapper} style={style} data-tooltip={text} data-position={position}>
+    <span
+      ref={wrapperRef}
+      className={styles.wrapper}
+      style={style}
+      onMouseEnter={reposition}
+    >
       {children}
+      {!disabled && (
+        <span ref={tipRef} className={styles.tip}>
+          {text}
+        </span>
+      )}
     </span>
   );
 }

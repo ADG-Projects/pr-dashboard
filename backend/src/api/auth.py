@@ -40,6 +40,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 PUBLIC_PATHS = {
     "/api/auth/login",
     "/api/auth/github/callback",
+    "/api/auth/dev-users",
     "/api/health",
 }
 # (path, method) pairs that are public only for specific HTTP methods

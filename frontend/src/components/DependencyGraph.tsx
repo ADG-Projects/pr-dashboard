@@ -63,6 +63,42 @@ const REVIEW_TOOLTIPS: Record<string, string> = {
   none: 'No reviews yet',
 };
 
+/** Compute priority score (0-100) matching backend compute_priority_score logic. */
+function standalonePriorityScore(pr: PRSummary): number {
+  // Review readiness (max 35)
+  const reviewScores: Record<string, number> = { approved: 35, reviewed: 15, none: 15, changes_requested: 0 };
+  const reviewPts = reviewScores[pr.review_state] ?? 15;
+
+  // CI status (max 25)
+  const ciScores: Record<string, number> = { success: 25, pending: 10, unknown: 5, failure: 0 };
+  const ciPts = ciScores[pr.ci_status] ?? 5;
+
+  // Size inverse (max 10)
+  const totalLines = pr.additions + pr.deletions;
+  let sizePts: number;
+  if (totalLines <= 50) sizePts = 10;
+  else if (totalLines <= 200) sizePts = 8;
+  else if (totalLines <= 500) sizePts = 5;
+  else if (totalLines <= 1000) sizePts = 2;
+  else sizePts = 0;
+
+  // Mergeable state (max 15)
+  const mergeScores: Record<string, number> = { clean: 15, unstable: 8 };
+  const mergeablePts = mergeScores[pr.mergeable_state ?? ''] ?? 0;
+
+  // Age linear 0→10 over 7 days (max 10)
+  const ageDays = (Date.now() - new Date(pr.created_at).getTime()) / 86_400_000;
+  const agePts = Math.min(10, Math.floor(ageDays * 10 / 7));
+
+  // Rebase check (max 5)
+  const rebasePts = pr.rebased_since_approval ? 5 : 0;
+
+  // Draft penalty
+  const draftPenalty = pr.draft ? -30 : 0;
+
+  return Math.max(0, reviewPts + ciPts + sizePts + mergeablePts + agePts + rebasePts + draftPenalty);
+}
+
 export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogin, dimAuthor, selectedPrNumber, onSelectPr, onRenameStack, nameMap }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [editingStackId, setEditingStackId] = useState<number | null>(null);
@@ -110,6 +146,12 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
         standalone.push(pr);
       }
     }
+
+    standalone.sort((a, b) => {
+      const scoreDiff = standalonePriorityScore(b) - standalonePriorityScore(a);
+      if (scoreDiff !== 0) return scoreDiff;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
 
     // Build root PR id -> Stack lookup
     const rootToStack = new Map<number, Stack>();

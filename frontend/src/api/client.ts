@@ -91,6 +91,7 @@ export interface PRSummary {
   assignee_id: number | null;
   assignee_name: string | null;
   github_requested_reviewers: { login: string; avatar_url: string | null }[];
+  all_reviewers: { login: string; avatar_url: string | null }[];
   rebased_since_approval: boolean;
   merged_at: string | null;
   manual_priority: string | null;

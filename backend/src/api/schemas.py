@@ -131,6 +131,7 @@ class PRSummary(BaseModel):
     assignee_id: int | None = None
     assignee_name: str | None = None
     github_requested_reviewers: list[dict] = []
+    all_reviewers: list[dict] = []
     rebased_since_approval: bool = False
     merged_at: datetime | None = None
     manual_priority: str | None = None

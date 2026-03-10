@@ -245,9 +245,10 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
   const isDimmed = useCallback((pr: PRSummary) => {
     if (highlightedPrIds != null && !highlightedPrIds.has(pr.id)) return true;
     if (dimReviewerLogin != null) {
+      const reviewers = pr.all_reviewers ?? pr.github_requested_reviewers;
       const hasReviewer = dimReviewerLogin instanceof Set
-        ? pr.github_requested_reviewers?.some((r) => dimReviewerLogin.has(r.login))
-        : pr.github_requested_reviewers?.some((r) => r.login === dimReviewerLogin);
+        ? reviewers?.some((r) => dimReviewerLogin.has(r.login))
+        : reviewers?.some((r) => r.login === dimReviewerLogin);
       if (!hasReviewer) return true;
     }
     if (dimAuthor != null) {
@@ -288,23 +289,24 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
         </div>
         <div className={styles.cardTitle}>{pr.title}</div>
         <div className={styles.cardReviewers}>
-          {pr.github_requested_reviewers && pr.github_requested_reviewers.length > 0 ? (
+          {pr.all_reviewers && pr.all_reviewers.length > 0 ? (
             <Tooltip
-              text={pr.github_requested_reviewers.map((r) => nameMap?.get(r.login)?.displayName || r.login).join(', ')}
+              text={pr.all_reviewers.map((r) => nameMap?.get(r.login)?.displayName || r.login).join(', ')}
               position="top"
             >
               <div className={styles.reviewerAvatarStack}>
-                {pr.github_requested_reviewers.slice(0, 3).map((r) =>
-                  r.avatar_url ? (
-                    <img key={r.login} src={r.avatar_url} alt={r.login} className={styles.reviewerAvatar} />
+                {pr.all_reviewers.slice(0, 3).map((r) => {
+                  const avatar = r.avatar_url || nameMap?.get(r.login)?.avatar || null;
+                  return avatar ? (
+                    <img key={r.login} src={avatar} alt={r.login} className={styles.reviewerAvatar} />
                   ) : (
                     <span key={r.login} className={styles.reviewerAvatarInitial}>
                       {(nameMap?.get(r.login)?.displayName || r.login).charAt(0).toUpperCase()}
                     </span>
-                  )
-                )}
-                {pr.github_requested_reviewers.length > 3 && (
-                  <span className={styles.reviewerOverflow}>+{pr.github_requested_reviewers.length - 3}</span>
+                  );
+                })}
+                {pr.all_reviewers.length > 3 && (
+                  <span className={styles.reviewerOverflow}>+{pr.all_reviewers.length - 3}</span>
                 )}
               </div>
             </Tooltip>

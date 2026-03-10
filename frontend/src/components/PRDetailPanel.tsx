@@ -147,7 +147,17 @@ export function PRDetailPanel({ repoId, prNumber, onClose }: Props) {
       }
     }
 
-    return Array.from(map.values());
+    const stateOrder: Record<string, number> = {
+      changes_requested: 0,
+      pending: 1,
+      commented_only: 2,
+      reviewed: 2,
+      approved: 3,
+    };
+    return Array.from(map.values()).sort(
+      (a, b) => (stateOrder[a.state] ?? 2) - (stateOrder[b.state] ?? 2)
+        || a.login.localeCompare(b.login),
+    );
   }, [pr]);
 
   // Exclude anyone already in the unified list from the add-reviewer dropdown

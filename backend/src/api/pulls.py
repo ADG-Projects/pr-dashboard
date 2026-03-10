@@ -139,6 +139,51 @@ def _commenters_without_review(pr: PullRequest) -> list[str]:
     return sorted(commenters - formal_reviewers - requested)
 
 
+_REVIEWER_STATE_ORDER = {
+    "changes_requested": 0,
+    "pending": 1,
+    "commented": 2,
+    "reviewed": 2,
+    "approved": 3,
+}
+
+
+def _compute_all_reviewers(pr: PullRequest) -> list[dict]:
+    """Merge requested reviewers and review authors into a sorted list.
+
+    Sort order: changes_requested, pending, commented/reviewed, approved.
+    Alphabetical within each group.
+    """
+    # Determine latest review state per reviewer
+    latest_state: dict[str, str] = {}
+    for r in sorted(pr.reviews or [], key=lambda x: x.submitted_at):
+        latest_state[r.reviewer] = r.state
+
+    entries: list[dict] = []
+    seen: set[str] = set()
+
+    # Requested reviewers who haven't submitted a review yet are "pending"
+    for r in pr.github_requested_reviewers or []:
+        login = r.get("login")
+        if not login:
+            continue
+        seen.add(login)
+        raw = latest_state.get(login)
+        state = "pending" if raw is None else raw.lower().replace(" ", "_")
+        entries.append({"login": login, "avatar_url": r.get("avatar_url"), "review_state": state})
+
+    # Reviewers from reviews who aren't in the requested list
+    for login, raw_state in latest_state.items():
+        if login in seen:
+            continue
+        seen.add(login)
+        state = raw_state.lower().replace(" ", "_")
+        entries.append({"login": login, "avatar_url": None, "review_state": state})
+
+    entries.sort(key=lambda e: (_REVIEWER_STATE_ORDER.get(e["review_state"], 2), e["login"]))
+    return entries
+
+
 def _pr_to_summary(pr: PullRequest, stack_id: int | None = None) -> PRSummary:
     return PRSummary(
         id=pr.id,
@@ -162,6 +207,7 @@ def _pr_to_summary(pr: PullRequest, stack_id: int | None = None) -> PRSummary:
         assignee_id=pr.assignee_id,
         assignee_name=(pr.assignee.name or pr.assignee.login) if pr.assignee else None,
         github_requested_reviewers=pr.github_requested_reviewers or [],
+        all_reviewers=_compute_all_reviewers(pr),
         rebased_since_approval=_rebased_since_approval(pr),
         merged_at=pr.merged_at,
         manual_priority=pr.manual_priority,
@@ -273,6 +319,7 @@ async def get_pull(
         assignee_id=pr.assignee_id,
         assignee_name=(pr.assignee.name or pr.assignee.login) if pr.assignee else None,
         github_requested_reviewers=pr.github_requested_reviewers or [],
+        all_reviewers=_compute_all_reviewers(pr),
         rebased_since_approval=_rebased_since_approval(pr),
         manual_priority=pr.manual_priority,
         commenters_without_review=_commenters_without_review(pr),

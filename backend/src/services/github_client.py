@@ -89,6 +89,48 @@ class GitHubClient:
             },
         )
 
+    async def list_recently_closed_pulls(
+        self, owner: str, repo: str, cutoff: datetime
+    ) -> list[dict[str, Any]]:
+        """List closed PRs updated after *cutoff*, paginating until we pass it.
+
+        GitHub's Pulls API doesn't support a ``since`` parameter, so we fetch
+        ``state=closed`` sorted by ``updated`` descending and stop once we see
+        a PR whose ``updated_at`` is older than the cutoff.
+        """
+        client = await self._ensure_client()
+        params: dict[str, Any] = {
+            "state": "closed",
+            "sort": "updated",
+            "direction": "desc",
+            "per_page": 100,
+        }
+        results: list[dict[str, Any]] = []
+
+        url: str | None = f"/repos/{owner}/{repo}/pulls"
+        while url:
+            resp = await client.get(url, params=params if url.startswith("/") else None)
+            resp.raise_for_status()
+            page: list[dict[str, Any]] = resp.json()
+            if not page:
+                break
+
+            for pr in page:
+                updated = parse_gh_datetime(pr.get("updated_at"))
+                if updated and updated < cutoff:
+                    return results
+                results.append(pr)
+
+            # Follow Link: <...>; rel="next"
+            link = resp.headers.get("link", "")
+            url = None
+            for part in link.split(","):
+                if 'rel="next"' in part:
+                    url = part.split(";")[0].strip(" <>")
+                    break
+
+        return results
+
     async def get_pull(self, owner: str, repo: str, number: int) -> dict[str, Any]:
         """Get full PR detail (includes mergeable_state, diff stats)."""
         return await self._get(f"/repos/{owner}/{repo}/pulls/{number}")

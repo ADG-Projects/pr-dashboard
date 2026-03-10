@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     sync_interval_seconds: int = Field(
         default=180, description="Seconds between GitHub sync cycles"
     )
+    merged_pr_lookback_days: int = Field(
+        default=7, description="How many days back to fetch closed/merged PRs"
+    )
 
     # Auth
     dashboard_password: str = Field(default="", description="Dashboard login password")

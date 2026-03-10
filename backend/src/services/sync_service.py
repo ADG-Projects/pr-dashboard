@@ -1,7 +1,7 @@
 """Background sync service that fetches GitHub data and upserts into the database."""
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from loguru import logger
 from sqlalchemy import select
@@ -136,13 +136,21 @@ class SyncService:
             close_after = True
 
         try:
+            from src.config.settings import settings
+
             gh_pulls = await github.list_open_pulls(owner, name)
             logger.info(f"  Found {len(gh_pulls)} open PRs")
 
-            fetched_pr_numbers = {gh_pr["number"] for gh_pr in gh_pulls}
+            # Fetch recently closed/merged PRs so they appear even after a DB wipe
+            cutoff = now - timedelta(days=settings.merged_pr_lookback_days)
+            closed_pulls = await github.list_recently_closed_pulls(owner, name, cutoff)
+            logger.info(f"  Found {len(closed_pulls)} recently closed PRs")
+
+            all_pulls = gh_pulls + closed_pulls
+            fetched_pr_numbers = {gh_pr["number"] for gh_pr in all_pulls}
 
             async with async_session_factory() as session:
-                for gh_pr in gh_pulls:
+                for gh_pr in all_pulls:
                     pr = await self._upsert_pr(session, repo_id, gh_pr, gh_client=github)
 
                     # Fetch detail, workflow runs, and reviews in parallel

@@ -171,6 +171,8 @@ export interface PriorityBreakdown {
   draft_penalty: number;
 }
 
+export type PriorityMode = 'review' | 'owner';
+
 export interface PrioritizedPR {
   pr: PRSummary;
   repo_full_name: string;
@@ -182,6 +184,7 @@ export interface PrioritizedPR {
   stack_id: number | null;
   stack_name: string | null;
   priority_tier: string;
+  mode: string;
 }
 
 // ── API functions ────────────────────────────────
@@ -248,8 +251,11 @@ export const api = {
     request<{ status: string }>(`/api/repos/${id}/sync`, { method: 'POST' }),
 
   // Prioritization
-  listPrioritized: (repoId?: number) => {
-    const qs = repoId ? `?repo_id=${repoId}` : '';
+  listPrioritized: (repoId?: number, mode?: PriorityMode) => {
+    const params = new URLSearchParams();
+    if (repoId) params.set('repo_id', String(repoId));
+    if (mode) params.set('mode', mode);
+    const qs = params.toString() ? `?${params.toString()}` : '';
     return request<PrioritizedPR[]>(`/api/pulls/prioritized${qs}`);
   },
 

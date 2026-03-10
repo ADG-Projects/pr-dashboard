@@ -210,6 +210,7 @@ class PrioritizedPROut(BaseModel):
     stack_id: int | None = None
     stack_name: str | None = None
     priority_tier: str = "normal"
+    mode: str = "default"
 
 
 class PriorityUpdate(BaseModel):

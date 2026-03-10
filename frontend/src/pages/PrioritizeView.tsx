@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { api, type PrioritizedPR, type PriorityBreakdown, type RepoSummary, type User } from '../api/client';
+import { api, type PrioritizedPR, type PriorityBreakdown, type PriorityMode, type RepoSummary, type User } from '../api/client';
 import { useCurrentUser } from '../App';
 import { PRDetailPanel } from '../components/PRDetailPanel';
 import { Tooltip } from '../components/Tooltip';
@@ -16,7 +16,43 @@ function scoreColor(score: number): string {
 }
 
 
-function BreakdownTooltip({ breakdown, score }: { breakdown: PriorityBreakdown; score: number }) {
+function BreakdownTooltip({ breakdown, score, mode }: { breakdown: PriorityBreakdown; score: number; mode: PriorityMode | null }) {
+  if (mode === 'review') {
+    return (
+      <div className={styles.breakdownTooltip}>
+        <div className={styles.breakdownTitle}>Score breakdown ({score}/100)</div>
+        <div className={styles.breakdownRow}><span>Ball in my court</span><span>{breakdown.review}/35</span></div>
+        <div className={styles.breakdownRow}><span>CI passing</span><span>{breakdown.ci}/20</span></div>
+        <div className={styles.breakdownRow}><span>Small diff</span><span>{breakdown.size}/15</span></div>
+        <div className={styles.breakdownRow}><span>Age</span><span>{breakdown.age}/15</span></div>
+        <div className={styles.breakdownRow}><span>Mergeable</span><span>{breakdown.mergeable}/10</span></div>
+        {breakdown.draft_penalty < 0 && (
+          <div className={`${styles.breakdownRow} ${styles.breakdownPenalty}`}>
+            <span>Draft penalty</span><span>{breakdown.draft_penalty}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (mode === 'owner') {
+    return (
+      <div className={styles.breakdownTooltip}>
+        <div className={styles.breakdownTitle}>Score breakdown ({score}/100)</div>
+        <div className={styles.breakdownRow}><span>Changes requested</span><span>{breakdown.review}/30</span></div>
+        <div className={styles.breakdownRow}><span>CI needs fix</span><span>{breakdown.ci}/25</span></div>
+        <div className={styles.breakdownRow}><span>Has conflicts</span><span>{breakdown.mergeable}/15</span></div>
+        <div className={styles.breakdownRow}><span>Ready to merge</span><span>{breakdown.size}/15</span></div>
+        <div className={styles.breakdownRow}><span>Age</span><span>{breakdown.age}/10</span></div>
+        <div className={styles.breakdownRow}><span>New feedback</span><span>{breakdown.rebase}/5</span></div>
+        {breakdown.draft_penalty < 0 && (
+          <div className={`${styles.breakdownRow} ${styles.breakdownPenalty}`}>
+            <span>Draft penalty</span><span>{breakdown.draft_penalty}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+  // Default/legacy mode
   return (
     <div className={styles.breakdownTooltip}>
       <div className={styles.breakdownTitle}>Score breakdown ({score}/100)</div>
@@ -38,36 +74,88 @@ function BreakdownTooltip({ breakdown, score }: { breakdown: PriorityBreakdown; 
 type ScoreImpact = 'positive' | 'negative' | 'neutral';
 type ScoredPhrase = { text: string; tip: string; impact: ScoreImpact; priority: number };
 
-function scoreSummary(b: PriorityBreakdown, reviewState: string): ScoredPhrase[] {
+function scoreSummaryReview(b: PriorityBreakdown): ScoredPhrase[] {
   const phrases: ScoredPhrase[] = [];
 
-  // Review (max 35)
+  // Ball in my court (max 35)
+  if (b.review === 35) phrases.push({ text: 'Never reviewed', tip: "You haven't reviewed this PR yet, you're blocking", impact: 'negative', priority: 9 });
+  else if (b.review === 30) phrases.push({ text: 'New changes', tip: 'Author pushed new commits since your last review', impact: 'negative', priority: 8 });
+  else if (b.review === 0) phrases.push({ text: 'Waiting on author', tip: "You've reviewed and nothing changed since, ball is in author's court", impact: 'positive', priority: 1 });
+
+  // CI (max 20)
+  if (b.ci === 20) phrases.push({ text: 'CI passing', tip: 'All checks passing', impact: 'positive', priority: 3 });
+  else if (b.ci === 8) phrases.push({ text: 'CI pending', tip: 'Checks still running', impact: 'neutral', priority: 5 });
+  else if (b.ci === 0) phrases.push({ text: 'CI failing', tip: 'Checks are failing, may not be worth reviewing yet', impact: 'negative', priority: 7 });
+
+  // Size (max 15)
+  if (b.size >= 12) phrases.push({ text: 'Quick review', tip: 'Small diff, easy to review', impact: 'positive', priority: 2 });
+  else if (b.size === 0) phrases.push({ text: 'Very large diff', tip: 'Over 1000 lines, hard to review', impact: 'negative', priority: 5 });
+
+  // Mergeable (max 10)
+  if (b.mergeable === 10) phrases.push({ text: 'Clean merge', tip: 'No conflicts', impact: 'positive', priority: 1 });
+  else if (b.mergeable === 0) phrases.push({ text: 'Has conflicts', tip: 'Merge conflicts, needs rebase', impact: 'negative', priority: 6 });
+
+  // Age (max 15)
+  if (b.age >= 10) phrases.push({ text: 'Getting stale', tip: 'Open for a while, aging PRs risk merge conflicts', impact: 'neutral', priority: 3 });
+
+  // Draft
+  if (b.draft_penalty < 0) phrases.push({ text: 'Draft', tip: 'Draft PR, not ready for review', impact: 'negative', priority: 10 });
+
+  const order: Record<ScoreImpact, number> = { positive: 0, neutral: 1, negative: 2 };
+  phrases.sort((a, b) => order[a.impact] - order[b.impact] || b.priority - a.priority);
+  return phrases.slice(0, 4);
+}
+
+function scoreSummaryOwner(b: PriorityBreakdown): ScoredPhrase[] {
+  const phrases: ScoredPhrase[] = [];
+
+  // Changes requested (review field, max 30)
+  if (b.review === 30) phrases.push({ text: 'Changes requested', tip: 'A reviewer requested changes, address their feedback', impact: 'negative', priority: 9 });
+
+  // CI needs fix (ci field, max 25) - inverted: high score = failure
+  if (b.ci >= 20) phrases.push({ text: 'CI broken', tip: 'CI is failing, fix it before it can be merged', impact: 'negative', priority: 8 });
+  else if (b.ci === 5) phrases.push({ text: 'CI pending', tip: 'CI checks still running', impact: 'neutral', priority: 4 });
+  else if (b.ci === 0) phrases.push({ text: 'CI passing', tip: 'All checks passing', impact: 'positive', priority: 2 });
+
+  // Conflicts (mergeable field, max 15) - inverted: high score = conflicts
+  if (b.mergeable === 15) phrases.push({ text: 'Has conflicts', tip: 'Merge conflicts, needs rebase', impact: 'negative', priority: 7 });
+
+  // Ready to merge (size field, max 15)
+  if (b.size === 15) phrases.push({ text: 'Ready to merge!', tip: 'Approved, CI passing, clean merge - ship it!', impact: 'positive', priority: 10 });
+  else if (b.size >= 5) phrases.push({ text: 'Nearly ready', tip: 'Approved but missing CI or clean merge', impact: 'neutral', priority: 5 });
+
+  // New feedback (rebase field, max 5)
+  if (b.rebase === 5) phrases.push({ text: 'New feedback', tip: 'Someone left review comments', impact: 'neutral', priority: 6 });
+
+  // Draft
+  if (b.draft_penalty < 0) phrases.push({ text: 'Draft', tip: 'Draft PR, not yet published', impact: 'negative', priority: 10 });
+
+  const order: Record<ScoreImpact, number> = { positive: 0, neutral: 1, negative: 2 };
+  phrases.sort((a, b) => order[a.impact] - order[b.impact] || b.priority - a.priority);
+  return phrases.slice(0, 4);
+}
+
+function scoreSummaryDefault(b: PriorityBreakdown, reviewState: string): ScoredPhrase[] {
+  const phrases: ScoredPhrase[] = [];
+
   if (b.review === 35) phrases.push({ text: 'Approved', tip: 'Review approved, ready to merge', impact: 'positive', priority: 6 });
   else if (reviewState === 'reviewed') phrases.push({ text: 'Reviewed', tip: 'Has review comments but not yet approved', impact: 'neutral', priority: 4 });
   else if (reviewState === 'none') phrases.push({ text: 'Awaiting review', tip: 'No reviews yet, needs someone to look at it', impact: 'negative', priority: 6 });
   else if (b.review === 0) phrases.push({ text: 'Changes requested', tip: 'Reviewer requested changes, must be addressed before merge', impact: 'negative', priority: 9 });
 
-  // CI (max 25)
   if (b.ci === 25) phrases.push({ text: 'CI passing', tip: 'All checks passing, safe to merge', impact: 'positive', priority: 3 });
   else if (b.ci === 10) phrases.push({ text: 'CI pending', tip: 'Checks still running, wait for results', impact: 'neutral', priority: 5 });
   else if (b.ci === 0) phrases.push({ text: 'CI failing', tip: 'Checks are failing, must be fixed before merge', impact: 'negative', priority: 8 });
 
-  // Size (max 10)
   if (b.size === 10) phrases.push({ text: 'Small diff', tip: 'Small change, easy to review', impact: 'positive', priority: 1 });
   else if (b.size === 0) phrases.push({ text: 'Very large diff', tip: 'Over 1000 lines changed, hard to review, consider splitting', impact: 'negative', priority: 5 });
   else if (b.size === 2) phrases.push({ text: 'Large diff', tip: '500-1000 lines changed, may be hard to review', impact: 'negative', priority: 4 });
 
-  // Mergeable (max 15)
   if (b.mergeable === 15) phrases.push({ text: 'Clean merge', tip: 'No conflicts, can merge cleanly', impact: 'positive', priority: 2 });
   else if (b.mergeable === 0) phrases.push({ text: 'Has conflicts', tip: 'Merge conflicts detected, needs rebase', impact: 'negative', priority: 7 });
 
-  // Age (max 10)
   if (b.age >= 8) phrases.push({ text: 'Getting stale', tip: 'Open for over a week, aging PRs risk merge conflicts', impact: 'neutral', priority: 3 });
-
-  // Rebase (max 5)
   if (b.rebase === 5) phrases.push({ text: 'Freshly rebased', tip: 'Rebased since last approval, up to date with base branch', impact: 'positive', priority: 1 });
-
-  // Draft penalty
   if (b.draft_penalty < 0) phrases.push({ text: 'Draft', tip: 'Draft PR, not ready for review, large score penalty', impact: 'negative', priority: 10 });
 
   const order: Record<ScoreImpact, number> = { positive: 0, neutral: 1, negative: 2 };
@@ -75,7 +163,13 @@ function scoreSummary(b: PriorityBreakdown, reviewState: string): ScoredPhrase[]
   return phrases.slice(0, 4);
 }
 
-function ScoringGuide({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+function getScoreSummary(b: PriorityBreakdown, reviewState: string, mode: PriorityMode | null): ScoredPhrase[] {
+  if (mode === 'review') return scoreSummaryReview(b);
+  if (mode === 'owner') return scoreSummaryOwner(b);
+  return scoreSummaryDefault(b, reviewState);
+}
+
+function ScoringGuide({ open, onToggle, mode }: { open: boolean; onToggle: () => void; mode: PriorityMode | null }) {
   return (
     <div className={styles.guide}>
       <button className={styles.guideToggle} onClick={onToggle}>
@@ -83,21 +177,58 @@ function ScoringGuide({ open, onToggle }: { open: boolean; onToggle: () => void 
       </button>
       {open && (
         <div className={styles.guideBody}>
-          <p>Each PR is scored 0–100 based on how ready it is to review and merge:</p>
-          <table className={styles.guideTable}>
-            <thead><tr><th>Signal</th><th>Max</th><th>Logic</th></tr></thead>
-            <tbody>
-              <tr><td>Review readiness</td><td>35</td><td>Approved (35), reviewed (15), no review (15), changes requested (0)</td></tr>
-              <tr><td>CI status</td><td>25</td><td>Passing (25), pending (10), unknown (5), failing (0)</td></tr>
-              <tr><td>Mergeable</td><td>15</td><td>Clean (15), unstable (8), conflicts/blocked (0)</td></tr>
-              <tr><td>Diff size</td><td>10</td><td>Smaller PRs score higher — easier to review, less rebase risk</td></tr>
-              <tr><td>Age</td><td>10</td><td>Older PRs rise in priority (linear over 7 days)</td></tr>
-              <tr><td>Rebase check</td><td>5</td><td>+5 if rebased since last approval (needs re-review)</td></tr>
-              <tr><td>Draft</td><td>-30</td><td>Penalty for draft PRs (not ready for review)</td></tr>
-            </tbody>
-          </table>
+          {mode === 'review' ? (
+            <>
+              <p>Each PR is scored 0-100 based on how urgently it needs your review:</p>
+              <table className={styles.guideTable}>
+                <thead><tr><th>Signal</th><th>Max</th><th>Logic</th></tr></thead>
+                <tbody>
+                  <tr><td>Ball in my court</td><td>35</td><td>Never reviewed (35), author pushed since my review (30), already reviewed and waiting (0)</td></tr>
+                  <tr><td>CI passing</td><td>20</td><td>Passing (20), pending (8), unknown (4), failing (0)</td></tr>
+                  <tr><td>Small diff</td><td>15</td><td>Smaller PRs score higher, quick wins first</td></tr>
+                  <tr><td>Age</td><td>15</td><td>Older PRs rise in priority (linear over 7 days)</td></tr>
+                  <tr><td>Mergeable</td><td>10</td><td>Clean (10), unstable (5), conflicts (0)</td></tr>
+                  <tr><td>Draft</td><td>-30</td><td>Penalty for draft PRs</td></tr>
+                </tbody>
+              </table>
+              <p>PRs where you have never reviewed rank highest. Once you review and the author hasn&apos;t pushed new changes, the PR drops to 0 on that signal (ball is in their court).</p>
+            </>
+          ) : mode === 'owner' ? (
+            <>
+              <p>Each PR is scored 0-100 based on how urgently it needs your attention:</p>
+              <table className={styles.guideTable}>
+                <thead><tr><th>Signal</th><th>Max</th><th>Logic</th></tr></thead>
+                <tbody>
+                  <tr><td>Changes requested</td><td>30</td><td>Reviewer sent it back (30), no changes requested (0)</td></tr>
+                  <tr><td>CI needs fix</td><td>25</td><td>Failing (25), action required (20), pending (5), passing (0)</td></tr>
+                  <tr><td>Has conflicts</td><td>15</td><td>Conflicts (15), unstable (8), clean (0)</td></tr>
+                  <tr><td>Ready to merge</td><td>15</td><td>Approved + CI + clean (15), approved + CI (10), approved (5)</td></tr>
+                  <tr><td>Age</td><td>10</td><td>Older PRs rise in priority (linear over 7 days)</td></tr>
+                  <tr><td>New feedback</td><td>5</td><td>Has review comments (5), none (0)</td></tr>
+                  <tr><td>Draft</td><td>-20</td><td>Lighter penalty for draft PRs</td></tr>
+                </tbody>
+              </table>
+              <p>PRs with failing CI or requested changes rank highest since those need your action. PRs that are ready to merge also score well so you don&apos;t forget to ship them.</p>
+            </>
+          ) : (
+            <>
+              <p>Each PR is scored 0-100 based on how ready it is to review and merge:</p>
+              <table className={styles.guideTable}>
+                <thead><tr><th>Signal</th><th>Max</th><th>Logic</th></tr></thead>
+                <tbody>
+                  <tr><td>Review readiness</td><td>35</td><td>Approved (35), reviewed (15), no review (15), changes requested (0)</td></tr>
+                  <tr><td>CI status</td><td>25</td><td>Passing (25), pending (10), unknown (5), failing (0)</td></tr>
+                  <tr><td>Mergeable</td><td>15</td><td>Clean (15), unstable (8), conflicts/blocked (0)</td></tr>
+                  <tr><td>Diff size</td><td>10</td><td>Smaller PRs score higher</td></tr>
+                  <tr><td>Age</td><td>10</td><td>Older PRs rise in priority (linear over 7 days)</td></tr>
+                  <tr><td>Rebase check</td><td>5</td><td>+5 if rebased since last approval</td></tr>
+                  <tr><td>Draft</td><td>-30</td><td>Penalty for draft PRs</td></tr>
+                </tbody>
+              </table>
+            </>
+          )}
           <p><strong>Manual priority</strong> overrides score-based ordering. High-priority PRs always appear at the top, low-priority at the bottom. Within each tier, PRs are sorted by automated score.</p>
-          <p><strong>Stacked PRs</strong> are ordered parent-before-child — you review the base of the stack first. The stack&apos;s position in the queue is determined by the root PR&apos;s score.</p>
+          <p><strong>Stacked PRs</strong> are ordered parent-before-child. The stack&apos;s position in the queue is determined by the root PR&apos;s score.</p>
           <p>Hover over any score bar to see the full breakdown. Set priority from the PR detail panel.</p>
         </div>
       )}
@@ -111,38 +242,18 @@ export function PrioritizeView() {
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [filterRepoId, setFilterRepoId] = useState<number | undefined>(undefined);
   const [guideOpen, setGuideOpen] = useState(false);
-
-  // Filter state
-  const [reviewerFilter, setReviewerFilter] = useState('');
+  const [mode, setMode] = useState<PriorityMode>('review');
 
   // Dropdown open/close state
   const [repoDropdownOpen, setRepoDropdownOpen] = useState(false);
-  const [reviewerDropdownOpen, setReviewerDropdownOpen] = useState(false);
 
   // Dropdown refs
   const repoDropdownRef = useRef<HTMLDivElement>(null);
-  const reviewerDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Default reviewer to "Me" once currentUser loads
-  const defaultedReviewer = useRef(false);
-  useEffect(() => {
-    if (currentUser && !defaultedReviewer.current) {
-      defaultedReviewer.current = true;
-      setReviewerFilter('__me__');
-    }
-  }, [currentUser]);
-
-  const hasActiveFilters = reviewerFilter !== (currentUser ? '__me__' : '');
-
-  const clearAllFilters = () => {
-    setReviewerFilter(currentUser ? '__me__' : '');
-  };
-
-  // Click-outside handler for all dropdowns
+  // Click-outside handler for dropdowns
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (repoDropdownRef.current && !repoDropdownRef.current.contains(e.target as Node)) setRepoDropdownOpen(false);
-      if (reviewerDropdownRef.current && !reviewerDropdownRef.current.contains(e.target as Node)) setReviewerDropdownOpen(false);
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -154,109 +265,111 @@ export function PrioritizeView() {
   });
 
   const { data: items, isLoading } = useQuery({
-    queryKey: ['prioritized', filterRepoId],
-    queryFn: () => api.listPrioritized(filterRepoId),
+    queryKey: ['prioritized', filterRepoId, currentUser ? mode : 'default'],
+    queryFn: () => api.listPrioritized(filterRepoId, currentUser ? mode : undefined),
     refetchInterval: 30_000,
   });
 
-  const { data: team } = useQuery({
-    queryKey: ['team'],
-    queryFn: api.listTeam,
-  });
-  const activeTeam = team?.filter((m: User) => m.is_active) || [];
+  // Determine active mode from response (handles unauth fallback)
+  const activeMode: PriorityMode | null = items?.[0]?.mode === 'review' ? 'review'
+    : items?.[0]?.mode === 'owner' ? 'owner'
+    : null;
 
-  // Collect all GitHub logins belonging to the current user
-  const myLogins = useMemo(() => {
-    if (!currentUser) return new Set<string>();
-    const me = activeTeam.find((m: User) => m.id === currentUser.id);
-    const logins = new Set<string>();
-    if (me) {
-      logins.add(me.login);
-      for (const acct of me.linked_accounts || []) {
-        logins.add(acct.login);
-      }
-    } else {
-      logins.add(currentUser.login);
-    }
-    return logins;
-  }, [currentUser, activeTeam]);
-
-  // Build GitHub login → { avatar, displayName } from team members + linked accounts
-  const authorInfoMap = useMemo(() => {
-    const map = new Map<string, { avatar: string | null; displayName: string }>();
-    for (const m of activeTeam) {
-      const displayName = m.name || m.login;
-      for (const acct of m.linked_accounts || []) {
-        map.set(acct.login, { avatar: acct.avatar_url, displayName });
-      }
-      if (!map.has(m.login)) {
-        map.set(m.login, { avatar: m.avatar_url, displayName });
-      }
-    }
-    return map;
-  }, [activeTeam]);
-
-  const allPrs = items || [];
-
-  // Derive reviewer options from unfiltered data
-  const reviewerPeopleMap = useMemo(() => {
-    const map = new Map<string, { login: string; avatar: string | null }>();
-    for (const item of allPrs) {
-      for (const r of item.pr.github_requested_reviewers || []) {
-        if (!map.has(r.login)) {
-          map.set(r.login, { login: r.login, avatar: r.avatar_url });
-        }
-      }
-    }
-    return map;
-  }, [allPrs]);
-  const reviewers = [...reviewerPeopleMap.values()].sort((a, b) => a.login.localeCompare(b.login));
-
-  // Client-side filtering: reviewer only
-  let prs = allPrs;
-  if (reviewerFilter === '__me__') {
-    prs = prs.filter((item) =>
-      (item.pr.github_requested_reviewers || []).some((r) => myLogins.has(r.login)),
-    );
-  } else if (reviewerFilter) {
-    prs = prs.filter((item) =>
-      (item.pr.github_requested_reviewers || []).some((r) => r.login === reviewerFilter),
-    );
-  }
+  const prs = items || [];
 
   if (isLoading) return <div className={styles.loading}>Loading prioritized PRs...</div>;
 
-  const readyCount = prs.filter((p) => p.priority_score >= 70 && !p.blocked_by_pr_id).length;
-  const needsAttentionCount = prs.filter((p) => p.priority_score < 40).length;
+  // Mode-specific summary stats
+  const summaryBar = (() => {
+    if (activeMode === 'review') {
+      const quickWins = prs.filter((p) => p.priority_breakdown.size >= 12 && p.priority_score >= 40).length;
+      return (
+        <div className={styles.summaryBar}>
+          <span className={styles.summaryItem}>
+            <span className={styles.summaryCount}>{prs.length}</span> to review
+          </span>
+          <span className={`${styles.summaryItem} ${styles.summaryGreen}`}>
+            <span className={styles.summaryCount}>{quickWins}</span> quick wins
+          </span>
+        </div>
+      );
+    }
+    if (activeMode === 'owner') {
+      const readyToMerge = prs.filter((p) => p.priority_breakdown.size === 15).length;
+      const needAction = prs.filter((p) => p.priority_breakdown.review === 30 || p.priority_breakdown.ci >= 20 || p.priority_breakdown.mergeable === 15).length;
+      return (
+        <div className={styles.summaryBar}>
+          <span className={styles.summaryItem}>
+            <span className={styles.summaryCount}>{prs.length}</span> open
+          </span>
+          <span className={`${styles.summaryItem} ${styles.summaryGreen}`}>
+            <span className={styles.summaryCount}>{readyToMerge}</span> ready to merge
+          </span>
+          {needAction > 0 && (
+            <span className={`${styles.summaryItem} ${styles.summaryRed}`}>
+              <span className={styles.summaryCount}>{needAction}</span> need action
+            </span>
+          )}
+        </div>
+      );
+    }
+    // Default mode
+    const readyCount = prs.filter((p) => p.priority_score >= 70 && !p.blocked_by_pr_id).length;
+    const needsAttentionCount = prs.filter((p) => p.priority_score < 40).length;
+    return (
+      <div className={styles.summaryBar}>
+        <span className={styles.summaryItem}>
+          <span className={styles.summaryCount}>{prs.length}</span> open
+        </span>
+        <span className={`${styles.summaryItem} ${styles.summaryGreen}`}>
+          <span className={styles.summaryCount}>{readyCount}</span> ready to merge
+        </span>
+        <span className={`${styles.summaryItem} ${styles.summaryRed}`}>
+          <span className={styles.summaryCount}>{needsAttentionCount}</span> needs attention
+        </span>
+      </div>
+    );
+  })();
 
   function handleSelectPr(item: PrioritizedPR) {
     setSelectedRepoId(item.repo_id);
     selectPr(item.pr.number);
   }
 
-  // Reviewer filter icon
-  const reviewerIcon = <svg className={styles.filterIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M8 3C4.5 3 1.7 5.1.5 8c1.2 2.9 4 5 7.5 5s6.3-2.1 7.5-5c-1.2-2.9-4-5-7.5-5zm0 8a3 3 0 110-6 3 3 0 010 6zm0-5a2 2 0 100 4 2 2 0 000-4z"/></svg>;
+  const emptyMessage = activeMode === 'review'
+    ? 'No PRs waiting for your review.'
+    : activeMode === 'owner'
+    ? "You don't have any open PRs."
+    : 'No open PRs found across your tracked repos.';
 
   return (
     <div className={styles.container}>
       <div className={styles.content}>
         <div className={styles.header}>
           <h2 className={styles.title}>Priority Queue</h2>
-          <div className={styles.summaryBar}>
-            <span className={styles.summaryItem}>
-              <span className={styles.summaryCount}>{prs.length}</span> open
-            </span>
-            <span className={`${styles.summaryItem} ${styles.summaryGreen}`}>
-              <span className={styles.summaryCount}>{readyCount}</span> ready to merge
-            </span>
-            <span className={`${styles.summaryItem} ${styles.summaryRed}`}>
-              <span className={styles.summaryCount}>{needsAttentionCount}</span> needs attention
-            </span>
-          </div>
+          {summaryBar}
         </div>
 
         <div className={styles.filters}>
-          {/* 1. Repo */}
+          {/* Mode toggle - only when logged in */}
+          {currentUser && (
+            <div className={styles.modeToggle}>
+              <button
+                className={`${styles.modeButton} ${mode === 'review' ? styles.modeButtonActive : ''}`}
+                onClick={() => setMode('review')}
+              >
+                Review Queue
+              </button>
+              <button
+                className={`${styles.modeButton} ${mode === 'owner' ? styles.modeButtonActive : ''}`}
+                onClick={() => setMode('owner')}
+              >
+                My PRs
+              </button>
+            </div>
+          )}
+
+          {/* Repo filter */}
           <Tooltip text="Filter by repository" position="bottom" disabled={repoDropdownOpen}>
             <div className={styles.filterDropdown} ref={repoDropdownRef}>
               <button
@@ -297,90 +410,12 @@ export function PrioritizeView() {
               )}
             </div>
           </Tooltip>
-
-          {/* 2. Reviewer */}
-          <Tooltip text="Filter PRs by requested reviewer" position="bottom" disabled={reviewerDropdownOpen}>
-            <div className={styles.filterDropdown} ref={reviewerDropdownRef}>
-              <button
-                className={styles.filterTrigger}
-                onClick={() => setReviewerDropdownOpen(!reviewerDropdownOpen)}
-              >
-                {reviewerIcon}
-                {(() => {
-                  if (reviewerFilter === '__me__') {
-                    return (
-                      <span className={styles.filterOption}>
-                        {currentUser?.avatar_url && <img src={currentUser.avatar_url} alt="Me" className={styles.filterAvatar} />}
-                        <span>Me</span>
-                      </span>
-                    );
-                  }
-                  if (reviewerFilter) {
-                    const info = authorInfoMap.get(reviewerFilter);
-                    const prData = reviewerPeopleMap.get(reviewerFilter);
-                    const avatar = info?.avatar ?? prData?.avatar ?? null;
-                    const displayName = info?.displayName ?? reviewerFilter;
-                    return (
-                      <span className={styles.filterOption}>
-                        {avatar && <img src={avatar} alt={reviewerFilter} className={styles.filterAvatar} />}
-                        <span>{displayName}</span>
-                      </span>
-                    );
-                  }
-                  return <span>All reviewers</span>;
-                })()}
-                <span className={styles.filterChevron}>{reviewerDropdownOpen ? '\u25B4' : '\u25BE'}</span>
-              </button>
-              {reviewerDropdownOpen && (
-                <div className={styles.filterMenu}>
-                  <div
-                    className={`${styles.filterMenuItem} ${!reviewerFilter ? styles.filterMenuItemActive : ''}`}
-                    onClick={() => { setReviewerFilter(''); setReviewerDropdownOpen(false); }}
-                  >
-                    <span>All reviewers</span>
-                  </div>
-                  {currentUser && (
-                    <div
-                      className={`${styles.filterMenuItem} ${reviewerFilter === '__me__' ? styles.filterMenuItemActive : ''}`}
-                      onClick={() => { setReviewerFilter('__me__'); setReviewerDropdownOpen(false); }}
-                    >
-                      {currentUser.avatar_url && <img src={currentUser.avatar_url} alt="Me" className={styles.filterAvatar} />}
-                      <span>Me</span>
-                    </div>
-                  )}
-                  {reviewers.map((r) => {
-                    const info = authorInfoMap.get(r.login);
-                    const avatar = info?.avatar ?? r.avatar ?? null;
-                    const displayName = info?.displayName ?? r.login;
-                    return (
-                      <div
-                        key={r.login}
-                        className={`${styles.filterMenuItem} ${reviewerFilter === r.login ? styles.filterMenuItemActive : ''}`}
-                        onClick={() => { setReviewerFilter(r.login); setReviewerDropdownOpen(false); }}
-                      >
-                        {avatar && <img src={avatar} alt={r.login} className={styles.filterAvatar} />}
-                        <span>{displayName}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </Tooltip>
-
-          {/* Clear filters */}
-          {hasActiveFilters && (
-            <button className={styles.clearFilters} onClick={clearAllFilters} title="Reset all filters">
-              <svg className={styles.filterIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 01.708 0L8 7.293l2.646-2.647a.5.5 0 01.708.708L8.707 8l2.647 2.646a.5.5 0 01-.708.708L8 8.707l-2.646 2.647a.5.5 0 01-.708-.708L7.293 8 4.646 5.354a.5.5 0 010-.708z"/></svg>
-              Reset
-            </button>
-          )}
         </div>
 
-        <ScoringGuide open={guideOpen} onToggle={() => setGuideOpen(!guideOpen)} />
+        <ScoringGuide open={guideOpen} onToggle={() => setGuideOpen(!guideOpen)} mode={activeMode} />
 
         {prs.length === 0 ? (
-          <div className={styles.empty}>No open PRs found across your tracked repos.</div>
+          <div className={styles.empty}>{emptyMessage}</div>
         ) : (
           <div className={styles.list}>
             {prs.map((item, idx) => {
@@ -429,7 +464,7 @@ export function PrioritizeView() {
                     {item.blocked_by_pr_id && (
                       <span className={`${styles.badge} ${styles.badgeAmber}`}>Blocked</span>
                     )}
-                    {scoreSummary(item.priority_breakdown, item.pr.review_state).map((p, i) => {
+                    {getScoreSummary(item.priority_breakdown, item.pr.review_state, activeMode).map((p, i) => {
                       const cls = p.impact === 'positive' ? styles.badgeGreen
                         : p.impact === 'negative' ? styles.badgeRed
                         : styles.badgeDim;
@@ -460,7 +495,7 @@ export function PrioritizeView() {
                     {item.priority_score}
                   </span>
                   {hoveredId === item.pr.id && (
-                    <BreakdownTooltip breakdown={item.priority_breakdown} score={item.priority_score} />
+                    <BreakdownTooltip breakdown={item.priority_breakdown} score={item.priority_score} mode={activeMode} />
                   )}
                 </div>
               </div>

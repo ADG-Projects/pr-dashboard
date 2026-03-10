@@ -15,8 +15,8 @@ interface Props {
   prs: PRSummary[];
   stacks: Stack[];
   highlightStackId: number | null;
-  dimReviewerLogin: string | null;
-  dimAuthor: string | null;
+  dimReviewerLogin: string | Set<string> | null;
+  dimAuthor: string | Set<string> | null;
   selectedPrNumber: number | null;
   onSelectPr: (prNumber: number | null) => void;
   onRenameStack?: (stackId: number, name: string) => void;
@@ -232,10 +232,15 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
   const isDimmed = useCallback((pr: PRSummary) => {
     if (highlightedPrIds != null && !highlightedPrIds.has(pr.id)) return true;
     if (dimReviewerLogin != null) {
-      const hasReviewer = pr.github_requested_reviewers?.some((r) => r.login === dimReviewerLogin);
+      const hasReviewer = dimReviewerLogin instanceof Set
+        ? pr.github_requested_reviewers?.some((r) => dimReviewerLogin.has(r.login))
+        : pr.github_requested_reviewers?.some((r) => r.login === dimReviewerLogin);
       if (!hasReviewer) return true;
     }
-    if (dimAuthor != null && pr.author !== dimAuthor) return true;
+    if (dimAuthor != null) {
+      const matches = dimAuthor instanceof Set ? dimAuthor.has(pr.author) : pr.author === dimAuthor;
+      if (!matches) return true;
+    }
     return false;
   }, [highlightedPrIds, dimReviewerLogin, dimAuthor]);
 

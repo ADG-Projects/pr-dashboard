@@ -2,8 +2,9 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useRef, useState, useEffect } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { api, type PRSummary, type RepoSummary, type User } from '../api/client';
+import { useCurrentUser } from '../App';
 import { DependencyGraph } from '../components/DependencyGraph';
 import { PRDetailPanel } from '../components/PRDetailPanel';
 import { Tooltip } from '../components/Tooltip';
@@ -15,6 +16,7 @@ export function RepoView() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { selectedPrNumber, selectPr } = useStore();
+  const { user: currentUser } = useCurrentUser();
 
   const [authorFilter, setAuthorFilter] = useState('');
   const [ciFilter, setCiFilter] = useState('');
@@ -119,6 +121,22 @@ export function RepoView() {
     queryFn: api.listTeam,
   });
   const activeTeam = team?.filter((m: User) => m.is_active) || [];
+
+  // Collect all GitHub logins belonging to the current user (primary + linked accounts)
+  const myLogins = useMemo(() => {
+    if (!currentUser) return new Set<string>();
+    const me = activeTeam.find((m: User) => m.id === currentUser.id);
+    const logins = new Set<string>();
+    if (me) {
+      logins.add(me.login);
+      for (const acct of me.linked_accounts || []) {
+        logins.add(acct.login);
+      }
+    } else {
+      logins.add(currentUser.login);
+    }
+    return logins;
+  }, [currentUser, activeTeam]);
 
   const renameMutation = useMutation({
     mutationFn: ({ stackId, name }: { stackId: number; name: string }) =>
@@ -309,6 +327,14 @@ export function RepoView() {
               >
                 {icons.author}
                 {(() => {
+                  if (authorFilter === '__me__') {
+                    return (
+                      <span className={styles.filterOption}>
+                        {currentUser?.avatar_url && <img src={currentUser.avatar_url} alt="Me" className={styles.filterAvatar} />}
+                        <span>Me</span>
+                      </span>
+                    );
+                  }
                   const info = authorFilter ? authorInfoMap.get(authorFilter) : null;
                   if (authorFilter) {
                     return (
@@ -330,6 +356,15 @@ export function RepoView() {
                   >
                     <span>All authors</span>
                   </div>
+                  {currentUser && (
+                    <div
+                      className={`${styles.filterMenuItem} ${authorFilter === '__me__' ? styles.filterMenuItemActive : ''}`}
+                      onClick={() => { setAuthorFilter('__me__'); setAuthorDropdownOpen(false); }}
+                    >
+                      {currentUser.avatar_url && <img src={currentUser.avatar_url} alt="Me" className={styles.filterAvatar} />}
+                      <span>Me</span>
+                    </div>
+                  )}
                   {authors.map((a) => {
                     const info = authorInfoMap.get(a);
                     return (
@@ -357,6 +392,14 @@ export function RepoView() {
               >
                 {icons.reviewer}
                 {(() => {
+                  if (reviewerFilter === '__me__') {
+                    return (
+                      <span className={styles.filterOption}>
+                        {currentUser?.avatar_url && <img src={currentUser.avatar_url} alt="Me" className={styles.filterAvatar} />}
+                        <span>Me</span>
+                      </span>
+                    );
+                  }
                   if (reviewerFilter) {
                     const info = authorInfoMap.get(reviewerFilter);
                     const prData = repoPeopleMap.get(reviewerFilter);
@@ -381,6 +424,15 @@ export function RepoView() {
                   >
                     <span>All reviewers</span>
                   </div>
+                  {currentUser && (
+                    <div
+                      className={`${styles.filterMenuItem} ${reviewerFilter === '__me__' ? styles.filterMenuItemActive : ''}`}
+                      onClick={() => { setReviewerFilter('__me__'); setReviewerDropdownOpen(false); }}
+                    >
+                      {currentUser.avatar_url && <img src={currentUser.avatar_url} alt="Me" className={styles.filterAvatar} />}
+                      <span>Me</span>
+                    </div>
+                  )}
                   {reviewers.map((r) => {
                     const info = authorInfoMap.get(r.login);
                     const avatar = info?.avatar ?? r.avatar ?? null;
@@ -549,8 +601,8 @@ export function RepoView() {
             prs={filtered}
             stacks={stacks || []}
             highlightStackId={stackFilter}
-            dimReviewerLogin={reviewerFilter || null}
-            dimAuthor={authorFilter || null}
+            dimReviewerLogin={reviewerFilter === '__me__' ? myLogins : reviewerFilter || null}
+            dimAuthor={authorFilter === '__me__' ? myLogins : authorFilter || null}
             selectedPrNumber={selectedPrNumber}
             onSelectPr={selectPr}
             onRenameStack={(stackId, name) => renameMutation.mutate({ stackId, name })}

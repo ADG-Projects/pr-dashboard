@@ -182,11 +182,10 @@
   text-decoration: none;
   color: inherit;
   overflow: hidden;
-  transition: border-color var(--transition-normal), transform var(--transition-fast);
+  transition: border-color var(--transition-normal);
 }
 .card:hover {
   border-color: var(--accent-blue);
-  transform: translateY(-2px);
   text-decoration: none;
 }
 

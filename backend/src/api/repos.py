@@ -463,10 +463,7 @@ async def force_sync(
                     break
 
     if not gh:
-        from src.config.settings import settings
-
-        if settings.github_token:
-            gh = GitHubClient(token=settings.github_token)
+        raise HTTPException(status_code=400, detail="No GitHub token available for this repo")
 
     from src.services.sync_service import SyncService
 

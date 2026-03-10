@@ -166,7 +166,6 @@ Lists all users in two sections:
 | `DASHBOARD_PASSWORD` | Password gate (leave empty to disable) | (empty) |
 | `SYNC_INTERVAL_SECONDS` | Seconds between GitHub sync cycles | `180` |
 | `DEV_MODE` | Enable dev features (user impersonation) | `false` |
-| `GITHUB_TOKEN` | Legacy PAT (migration seeding only) | (empty) |
 | `HOST` | Server bind address | `0.0.0.0` |
 | `PORT` | Server port | `8000` |
 | `LOG_LEVEL` | Logging level | `INFO` |

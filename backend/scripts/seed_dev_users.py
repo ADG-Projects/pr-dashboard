@@ -4,9 +4,16 @@ Usage:
     cd backend && uv run python scripts/seed_dev_users.py
 
 Reads DEV_ALICE_TOKEN and DEV_BOB_TOKEN from .env (via settings).
-Creates two fake users ("Alice Dev", "Bob Dev") each with their own real
-GitHub token. Spaces are auto-discovered per token so each user gets
-access to whatever orgs their token can see.
+Creates two dev users each with their own real GitHub token. Each user
+gets a unique fake github_id so they don't collide with real OAuth users
+or each other, even if the tokens belong to the same GitHub account.
+
+Spaces are auto-discovered per token so each user gets access to whatever
+orgs their token can see.
+
+Note: These dev users are for local testing only. The cleanup migration
+(2f2f348ad3af) will remove them if run. To re-seed after cleanup, just
+run this script again.
 """
 
 import asyncio
@@ -29,20 +36,21 @@ FAKE_USERS = [
         "login": "alice-dev",
         "name": "Alice Dev",
         "github_id": 900001,
-        "token": settings.dev_alice_token,
+        "token_attr": "dev_alice_token",
     },
     {
         "login": "bob-dev",
         "name": "Bob Dev",
         "github_id": 900002,
-        "token": settings.dev_bob_token,
+        "token_attr": "dev_bob_token",
     },
 ]
 
 
 async def main() -> None:
     for fake_def in FAKE_USERS:
-        if not fake_def["token"]:
+        token = getattr(settings, fake_def["token_attr"])
+        if not token:
             print(
                 f"Missing token for {fake_def['name']}. "
                 f"Set DEV_ALICE_TOKEN / DEV_BOB_TOKEN in .env"
@@ -51,7 +59,7 @@ async def main() -> None:
 
     async with async_session_factory() as session:
         for fake_def in FAKE_USERS:
-            token = fake_def["token"]
+            token = getattr(settings, fake_def["token_attr"])
             print(f"\n--- {fake_def['name']} ---")
 
             # Validate token by fetching the GitHub user it belongs to
@@ -64,9 +72,11 @@ async def main() -> None:
             finally:
                 await gh.close()
 
-            print(f"  Token belongs to GitHub user: {gh_user['login']}")
+            real_login = gh_user["login"]
+            real_gh_id = gh_user["id"]
+            print(f"  Token belongs to GitHub user: {real_login} (id={real_gh_id})")
 
-            # Upsert User
+            # Upsert User with fake github_id to avoid collision with the real OAuth user
             existing_user = (
                 await session.execute(select(User).where(User.github_id == fake_def["github_id"]))
             ).scalar_one_or_none()
@@ -86,20 +96,20 @@ async def main() -> None:
                 await session.flush()
                 print(f"  Created user '{user.login}' (id={user.id})")
 
-            # Upsert GitHubAccount with the real token
+            # Upsert GitHubAccount linking the dev user to the real GitHub identity
             encrypted = encrypt_token(token)
             existing_acct = (
                 await session.execute(
                     select(GitHubAccount).where(
                         GitHubAccount.user_id == user.id,
-                        GitHubAccount.github_id == gh_user["id"],
+                        GitHubAccount.github_id == real_gh_id,
                     )
                 )
             ).scalar_one_or_none()
 
             if existing_acct:
                 existing_acct.encrypted_token = encrypted
-                existing_acct.login = gh_user["login"]
+                existing_acct.login = real_login
                 existing_acct.avatar_url = gh_user.get("avatar_url")
                 existing_acct.is_active = True
                 acct = existing_acct
@@ -107,8 +117,8 @@ async def main() -> None:
             else:
                 acct = GitHubAccount(
                     user_id=user.id,
-                    github_id=gh_user["id"],
-                    login=gh_user["login"],
+                    github_id=real_gh_id,
+                    login=real_login,
                     avatar_url=gh_user.get("avatar_url"),
                     encrypted_token=encrypted,
                     base_url="https://api.github.com",
@@ -125,6 +135,11 @@ async def main() -> None:
             await session.commit()
 
         print("\nDone! Set DEV_MODE=true in .env and use the DEV switcher in the UI.")
+        print(
+            "WARNING: If multiple dev users share the same GitHub token, "
+            "they will track repos with duplicate tokens. "
+            "Use different tokens for realistic multi-user testing."
+        )
 
 
 if __name__ == "__main__":

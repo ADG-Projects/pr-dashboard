@@ -65,12 +65,6 @@ async def _get_github_client_for_pr(
                 if token:
                     return GitHubClient(token=token, base_url=account.base_url), repo
 
-    # Fallback to global token
-    from src.config.settings import settings
-
-    if settings.github_token:
-        return GitHubClient(token=settings.github_token), repo
-
     raise HTTPException(status_code=400, detail="No GitHub token available for this repo")
 
 

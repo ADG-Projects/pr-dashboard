@@ -99,12 +99,6 @@ class SyncService:
                 async with async_session_factory() as session:
                     clients = await self._resolve_clients_for_repo(session, repo.id)
 
-                # Append global fallback token if available
-                from src.config.settings import settings
-
-                if settings.github_token:
-                    clients.append(GitHubClient(token=settings.github_token))
-
                 if not clients:
                     logger.warning(f"No token available for {repo.full_name}, skipping")
                     continue
@@ -144,168 +138,151 @@ class SyncService:
         repo_id: int,
         owner: str,
         name: str,
-        github: GitHubClient | None = None,
+        github: GitHubClient,
     ) -> None:
         """Sync PRs for a single repo (open, stale, closed, and merged)."""
         logger.info(f"Syncing {owner}/{name}...")
         now = datetime.now(UTC)
 
-        # Create a default client if none provided (for backward compat)
-        close_after = False
-        if github is None:
-            from src.config.settings import settings
+        from src.config.settings import settings
 
-            github = GitHubClient(token=settings.github_token)
-            close_after = True
+        gh_pulls = await github.list_open_pulls(owner, name)
+        logger.info(f"  Found {len(gh_pulls)} open PRs")
 
-        try:
-            from src.config.settings import settings
+        # Fetch recently closed/merged PRs so they appear even after a DB wipe
+        cutoff = now - timedelta(days=settings.merged_pr_lookback_days)
+        closed_pulls = await github.list_recently_closed_pulls(owner, name, cutoff)
+        logger.info(f"  Found {len(closed_pulls)} recently closed PRs")
 
-            gh_pulls = await github.list_open_pulls(owner, name)
-            logger.info(f"  Found {len(gh_pulls)} open PRs")
+        all_pulls = gh_pulls + closed_pulls
+        fetched_pr_numbers = {gh_pr["number"] for gh_pr in all_pulls}
 
-            # Fetch recently closed/merged PRs so they appear even after a DB wipe
-            cutoff = now - timedelta(days=settings.merged_pr_lookback_days)
-            closed_pulls = await github.list_recently_closed_pulls(owner, name, cutoff)
-            logger.info(f"  Found {len(closed_pulls)} recently closed PRs")
+        async with async_session_factory() as session:
+            for gh_pr in all_pulls:
+                pr = await self._upsert_pr(session, repo_id, gh_pr, gh_client=github)
 
-            all_pulls = gh_pulls + closed_pulls
-            fetched_pr_numbers = {gh_pr["number"] for gh_pr in all_pulls}
-
-            async with async_session_factory() as session:
-                for gh_pr in all_pulls:
-                    pr = await self._upsert_pr(session, repo_id, gh_pr, gh_client=github)
-
-                    # Fetch detail, workflow runs, reviews, and comments in parallel
-                    (
-                        detail_result,
-                        runs_result,
-                        reviews_result,
-                        issue_comments_result,
-                        review_comments_result,
-                    ) = await asyncio.gather(
-                        github.get_pull(owner, name, gh_pr["number"]),
-                        github.get_workflow_runs(owner, name, gh_pr["head"]["sha"]),
-                        github.get_reviews(owner, name, gh_pr["number"]),
-                        github.get_issue_comments(owner, name, gh_pr["number"]),
-                        github.get_review_comments(owner, name, gh_pr["number"]),
-                        return_exceptions=True,
-                    )
-
-                    if isinstance(detail_result, Exception):
-                        logger.warning(
-                            f"  Could not fetch detail for PR #{gh_pr['number']}: {detail_result}"
-                        )
-                    else:
-                        pr.additions = detail_result.get("additions", 0)
-                        pr.deletions = detail_result.get("deletions", 0)
-                        pr.changed_files = detail_result.get("changed_files", 0)
-                        pr.mergeable_state = detail_result.get("mergeable_state")
-
-                    if isinstance(runs_result, Exception):
-                        logger.warning(
-                            f"  Could not fetch workflow runs for PR #{gh_pr['number']}: "
-                            f"{runs_result}"
-                        )
-                    else:
-                        checks = [
-                            {
-                                "name": r["name"],
-                                "status": r["status"],
-                                "conclusion": r.get("conclusion"),
-                                "details_url": r.get("html_url"),
-                            }
-                            for r in runs_result
-                        ]
-                        await self._upsert_check_runs(session, pr.id, checks)
-
-                    if isinstance(reviews_result, Exception):
-                        logger.warning(
-                            f"  Could not fetch reviews for PR #{gh_pr['number']}: {reviews_result}"
-                        )
-                    else:
-                        await self._upsert_reviews(session, pr.id, reviews_result, gh_client=github)
-
-                    # Extract unique commenters (excluding PR author)
-                    commenter_logins: set[str] = set()
-                    pr_author = gh_pr["user"]["login"]
-                    for comments_result in (issue_comments_result, review_comments_result):
-                        if isinstance(comments_result, Exception):
-                            logger.warning(
-                                f"  Could not fetch comments for PR #{gh_pr['number']}: "
-                                f"{comments_result}"
-                            )
-                            continue
-                        for comment in comments_result:
-                            login = comment.get("user", {}).get("login")
-                            if login and login != pr_author:
-                                commenter_logins.add(login)
-                    pr.commenters = sorted(commenter_logins)
-
-                # Detect stale PRs: open in DB but not returned by GitHub
-                db_open_prs = (
-                    (
-                        await session.execute(
-                            select(PullRequest).where(
-                                PullRequest.repo_id == repo_id,
-                                PullRequest.state == "open",
-                            )
-                        )
-                    )
-                    .scalars()
-                    .all()
+                # Fetch detail, workflow runs, reviews, and comments in parallel
+                (
+                    detail_result,
+                    runs_result,
+                    reviews_result,
+                    issue_comments_result,
+                    review_comments_result,
+                ) = await asyncio.gather(
+                    github.get_pull(owner, name, gh_pr["number"]),
+                    github.get_workflow_runs(owner, name, gh_pr["head"]["sha"]),
+                    github.get_reviews(owner, name, gh_pr["number"]),
+                    github.get_issue_comments(owner, name, gh_pr["number"]),
+                    github.get_review_comments(owner, name, gh_pr["number"]),
+                    return_exceptions=True,
                 )
-                stale_prs = [pr for pr in db_open_prs if pr.number not in fetched_pr_numbers]
 
-                if stale_prs:
-                    logger.info(f"  Updating {len(stale_prs)} stale PR(s) for {owner}/{name}")
-                    sem = asyncio.Semaphore(5)
-
-                    async def fetch_stale(pr_number: int) -> dict | None:
-                        async with sem:
-                            try:
-                                return await github.get_pull(owner, name, pr_number)
-                            except Exception as exc:
-                                logger.warning(f"  Could not fetch stale PR #{pr_number}: {exc}")
-                                return None
-
-                    stale_details = await asyncio.gather(
-                        *(fetch_stale(pr.number) for pr in stale_prs)
+                if isinstance(detail_result, Exception):
+                    logger.warning(
+                        f"  Could not fetch detail for PR #{gh_pr['number']}: {detail_result}"
                     )
+                else:
+                    pr.additions = detail_result.get("additions", 0)
+                    pr.deletions = detail_result.get("deletions", 0)
+                    pr.changed_files = detail_result.get("changed_files", 0)
+                    pr.mergeable_state = detail_result.get("mergeable_state")
 
-                    for pr, detail in zip(stale_prs, stale_details, strict=True):
-                        if detail is None:
-                            continue
-                        pr.state = detail["state"]
-                        pr.merged_at = parse_gh_datetime(detail.get("merged_at"))
-                        pr.updated_at = parse_gh_datetime(detail.get("updated_at")) or datetime.now(
-                            UTC
+                if isinstance(runs_result, Exception):
+                    logger.warning(
+                        f"  Could not fetch workflow runs for PR #{gh_pr['number']}: {runs_result}"
+                    )
+                else:
+                    checks = [
+                        {
+                            "name": r["name"],
+                            "status": r["status"],
+                            "conclusion": r.get("conclusion"),
+                            "details_url": r.get("html_url"),
+                        }
+                        for r in runs_result
+                    ]
+                    await self._upsert_check_runs(session, pr.id, checks)
+
+                if isinstance(reviews_result, Exception):
+                    logger.warning(
+                        f"  Could not fetch reviews for PR #{gh_pr['number']}: {reviews_result}"
+                    )
+                else:
+                    await self._upsert_reviews(session, pr.id, reviews_result, gh_client=github)
+
+                # Extract unique commenters (excluding PR author)
+                commenter_logins: set[str] = set()
+                pr_author = gh_pr["user"]["login"]
+                for comments_result in (issue_comments_result, review_comments_result):
+                    if isinstance(comments_result, Exception):
+                        logger.warning(
+                            f"  Could not fetch comments for PR #{gh_pr['number']}: "
+                            f"{comments_result}"
                         )
-                        pr.last_synced_at = datetime.now(UTC)
+                        continue
+                    for comment in comments_result:
+                        login = comment.get("user", {}).get("login")
+                        if login and login != pr_author:
+                            commenter_logins.add(login)
+                pr.commenters = sorted(commenter_logins)
 
-                repo = await session.get(TrackedRepo, repo_id)
-                if repo:
-                    repo.last_synced_at = now
-
-                await session.commit()
-
-                # Clean up repo if all trackers were removed while sync was running
-                await self._delete_if_orphaned(repo_id, f"{owner}/{name}")
-
-            async with async_session_factory() as session:
-                stacks = await detect_stacks(session, repo_id)
-                await session.commit()
-                if stacks:
-                    logger.info(f"  Detected {len(stacks)} stack(s) for {owner}/{name}")
-
-            await broadcast_event(
-                "sync_complete",
-                {"repo_id": repo_id, "owner": owner, "name": name},
+            # Detect stale PRs: open in DB but not returned by GitHub
+            db_open_prs = (
+                (
+                    await session.execute(
+                        select(PullRequest).where(
+                            PullRequest.repo_id == repo_id,
+                            PullRequest.state == "open",
+                        )
+                    )
+                )
+                .scalars()
+                .all()
             )
-            logger.info(f"  Sync complete for {owner}/{name}")
-        finally:
-            if close_after:
-                await github.close()
+            stale_prs = [pr for pr in db_open_prs if pr.number not in fetched_pr_numbers]
+
+            if stale_prs:
+                logger.info(f"  Updating {len(stale_prs)} stale PR(s) for {owner}/{name}")
+                sem = asyncio.Semaphore(5)
+
+                async def fetch_stale(pr_number: int) -> dict | None:
+                    async with sem:
+                        try:
+                            return await github.get_pull(owner, name, pr_number)
+                        except Exception as exc:
+                            logger.warning(f"  Could not fetch stale PR #{pr_number}: {exc}")
+                            return None
+
+                stale_details = await asyncio.gather(*(fetch_stale(pr.number) for pr in stale_prs))
+
+                for pr, detail in zip(stale_prs, stale_details, strict=True):
+                    if detail is None:
+                        continue
+                    pr.state = detail["state"]
+                    pr.merged_at = parse_gh_datetime(detail.get("merged_at"))
+                    pr.updated_at = parse_gh_datetime(detail.get("updated_at")) or datetime.now(UTC)
+                    pr.last_synced_at = datetime.now(UTC)
+
+            repo = await session.get(TrackedRepo, repo_id)
+            if repo:
+                repo.last_synced_at = now
+
+            await session.commit()
+
+            # Clean up repo if all trackers were removed while sync was running
+            await self._delete_if_orphaned(repo_id, f"{owner}/{name}")
+
+        async with async_session_factory() as session:
+            stacks = await detect_stacks(session, repo_id)
+            await session.commit()
+            if stacks:
+                logger.info(f"  Detected {len(stacks)} stack(s) for {owner}/{name}")
+
+        await broadcast_event(
+            "sync_complete",
+            {"repo_id": repo_id, "owner": owner, "name": name},
+        )
+        logger.info(f"  Sync complete for {owner}/{name}")
 
     async def _delete_if_orphaned(self, repo_id: int, repo_name: str) -> None:
         """Delete a repo if all its trackers were removed during sync."""

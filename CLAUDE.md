@@ -86,4 +86,3 @@ See `.env.example` for all options. Key ones:
 - `SECRET_KEY` — Used for session cookies AND token encryption (change in production!)
 - `DASHBOARD_PASSWORD` — Optional, enables password gate (leave empty to disable)
 - `DEV_MODE` — Enable dev-only features (user impersonation endpoint)
-- `GITHUB_TOKEN` / `GITHUB_ORG` — Legacy, used only for migration seeding

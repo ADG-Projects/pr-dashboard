@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -226,9 +226,10 @@ async def add_space_to_account(
 async def remove_account(
     account_id: int,
     request: Request,
+    response: Response,
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    """Soft-delete a linked GitHub account and clean up trackers."""
+    """Delete a linked GitHub account and clean up trackers."""
     user_id = get_github_user_id(request)
     if not user_id:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -236,8 +237,6 @@ async def remove_account(
     account = await session.get(GitHubAccount, account_id)
     if not account or account.user_id != user_id:
         raise HTTPException(status_code=404, detail="Account not found")
-
-    account.is_active = False
 
     from sqlalchemy import delete, func
     from sqlalchemy import select as sa_select
@@ -277,5 +276,21 @@ async def remove_account(
         # Delete the spaces themselves
         await session.execute(delete(Space).where(Space.id.in_(space_ids)))
 
+    # Hard-delete the account row (and its encrypted token)
+    await session.delete(account)
     await session.commit()
-    logger.info(f"Deactivated GitHub account and cleaned up trackers/spaces: {account.login}")
+    logger.info(f"Deleted GitHub account and cleaned up trackers/spaces: {account.login}")
+
+    # If no accounts remain, clear the identity cookie so the user lands on the login screen
+    remaining_accounts = (
+        await session.execute(
+            select(GitHubAccount).where(
+                GitHubAccount.user_id == user_id, GitHubAccount.is_active.is_(True)
+            )
+        )
+    ).scalar_one_or_none()
+    if not remaining_accounts:
+        from src.api.auth import GITHUB_COOKIE
+
+        response.delete_cookie(GITHUB_COOKIE, path="/")
+        logger.info("Last account removed, cleared GitHub identity cookie")

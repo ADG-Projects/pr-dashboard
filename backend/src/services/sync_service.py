@@ -75,7 +75,7 @@ class SyncService:
         )
 
         for tracker in trackers:
-            if tracker.space and tracker.space.github_account:
+            if tracker.space and tracker.space.is_active and tracker.space.github_account:
                 account = tracker.space.github_account
                 if account.encrypted_token and account.is_active:
                     token = decrypt_token(account.encrypted_token)

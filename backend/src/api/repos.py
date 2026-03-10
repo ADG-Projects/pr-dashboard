@@ -449,11 +449,10 @@ async def force_sync(
         .all()
     )
 
-    # Prefer current user's tracker
+    # Only use the requesting user's tracker token
     user_id = get_github_user_id(request)
     gh: GitHubClient | None = None
-    sorted_trackers = sorted(trackers, key=lambda t: t.user_id != user_id)
-    for tracker in sorted_trackers:
+    for tracker in (t for t in trackers if t.user_id == user_id):
         if tracker.space and tracker.space.github_account:
             account = tracker.space.github_account
             if account.encrypted_token:

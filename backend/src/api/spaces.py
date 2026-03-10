@@ -181,17 +181,25 @@ async def list_available_repos(
             .all()
         )
 
-    return [
-        {
-            "name": r["name"],
-            "full_name": r["full_name"],
-            "description": r.get("description"),
-            "private": r.get("private", False),
-            "pushed_at": r.get("pushed_at"),
-        }
-        for r in repos
-        if not r.get("archived") and r["full_name"] not in user_tracked
-    ]
+    non_archived = [r for r in repos if not r.get("archived")]
+    total_from_github = len(non_archived)
+    available = [r for r in non_archived if r["full_name"] not in user_tracked]
+    already_tracked_count = total_from_github - len(available)
+
+    return {
+        "total_from_github": total_from_github,
+        "already_tracked_count": already_tracked_count,
+        "repos": [
+            {
+                "name": r["name"],
+                "full_name": r["full_name"],
+                "description": r.get("description"),
+                "private": r.get("private", False),
+                "pushed_at": r.get("pushed_at"),
+            }
+            for r in available
+        ],
+    }
 
 
 @router.post("/{space_id}/connectivity")

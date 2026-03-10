@@ -372,9 +372,17 @@ async def github_oauth_callback(code: str, state: str, request: Request) -> Redi
         else:
             account.login = gh_user["login"]
             account.avatar_url = gh_user.get("avatar_url")
-            account.encrypted_token = encrypted
             account.last_login_at = datetime.now(UTC)
             account.is_active = True
+            if linked_to_existing:
+                # Preserve the existing token (e.g. PAT with SSO authorization).
+                # The OAuth token is only used for authentication, not API access.
+                logger.info(
+                    f"Preserving existing token for account {account.id} "
+                    f"({account.login}) during OAuth merge"
+                )
+            else:
+                account.encrypted_token = encrypted
 
         await session.commit()
         await session.refresh(user)
@@ -382,8 +390,13 @@ async def github_oauth_callback(code: str, state: str, request: Request) -> Redi
         user_id = user.id
         account_id = account.id
 
-    # Auto-discover spaces (orgs + personal) in background
-    _track_task(asyncio.create_task(_discover_spaces_background(account_id)))
+    # Auto-discover spaces (orgs + personal) in background, but skip when
+    # signing in via an already-linked account since spaces are already set up
+    # and the OAuth token may lack org SSO authorization.
+    if not linked_to_existing:
+        _track_task(asyncio.create_task(_discover_spaces_background(account_id)))
+    else:
+        logger.info(f"Skipping space discovery for linked account {account_id}")
 
     # Set identity cookie
     expires = int(time.time()) + settings.session_max_age_seconds

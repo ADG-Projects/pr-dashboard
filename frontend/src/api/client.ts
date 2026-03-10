@@ -149,6 +149,12 @@ export interface AvailableRepo {
   pushed_at: string | null;
 }
 
+export interface AvailableReposResponse {
+  total_from_github: number;
+  already_tracked_count: number;
+  repos: AvailableRepo[];
+}
+
 export interface AuthStatus {
   authenticated: boolean;
   auth_enabled: boolean;
@@ -214,7 +220,7 @@ export const api = {
   deleteSpace: (id: number) =>
     request<void>(`/api/spaces/${id}`, { method: 'DELETE' }),
   listSpaceAvailableRepos: (spaceId: number) =>
-    request<AvailableRepo[]>(`/api/spaces/${spaceId}/available-repos`),
+    request<AvailableReposResponse>(`/api/spaces/${spaceId}/available-repos`),
   setRepoVisibility: (id: number, visibility: 'private' | 'shared') =>
     request<RepoSummary>(`/api/repos/${id}/visibility`, {
       method: 'PATCH',

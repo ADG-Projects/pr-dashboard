@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useState, useMemo } from 'react';
-import { api, type RepoSummary, type Space, type AvailableRepo } from '../api/client';
+import { api, type RepoSummary, type Space, type AvailableRepo, type AvailableReposResponse } from '../api/client';
 import { useCurrentUser } from '../App';
 import { GitHubIcon } from '../components/GitHubIcon';
 import { Tooltip } from '../components/Tooltip';
@@ -34,7 +34,7 @@ function RepoBrowser({ space, onClose }: { space: Space; onClose: () => void }) 
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
 
-  const { data: available, isLoading, isFetching, refetch, isError, error } = useQuery({
+  const { data: response, isLoading, isFetching, refetch, isError, error } = useQuery({
     queryKey: ['available-repos', space.id],
     queryFn: () => api.listSpaceAvailableRepos(space.id),
     staleTime: 5 * 60 * 1000,
@@ -47,12 +47,18 @@ function RepoBrowser({ space, onClose }: { space: Space; onClose: () => void }) 
     },
     onSuccess: (_data, trackedRepo) => {
       qc.invalidateQueries({ queryKey: ['repos'] });
-      qc.setQueryData<AvailableRepo[]>(
+      qc.setQueryData<AvailableReposResponse>(
         ['available-repos', space.id],
-        (old) => old?.filter((r) => r.full_name !== trackedRepo.full_name),
+        (old) => old ? {
+          ...old,
+          already_tracked_count: old.already_tracked_count + 1,
+          repos: old.repos.filter((r) => r.full_name !== trackedRepo.full_name),
+        } : old,
       );
     },
   });
+
+  const available = response?.repos;
 
   const filtered = useMemo(() => {
     if (!available) return [];
@@ -117,7 +123,11 @@ function RepoBrowser({ space, onClose }: { space: Space; onClose: () => void }) 
           )}
           {!isLoading && !isError && filtered.length === 0 && (
             <div className={styles.listEmpty}>
-              {search ? 'No matching repos' : 'All repos are already tracked'}
+              {search
+                ? 'No matching repos'
+                : response && response.total_from_github === 0
+                  ? 'No repos found. The token may lack access to this org.'
+                  : 'All repos are already tracked'}
             </div>
           )}
           {filtered.map((repo) => (

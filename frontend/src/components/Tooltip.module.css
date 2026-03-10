@@ -17,11 +17,10 @@
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;
-  transition: opacity var(--transition-fast);
-  top: 0;
-  left: 0;
+  top: -9999px;
+  left: -9999px;
 }
 
-.wrapper:hover > .tip {
+.tipVisible {
   opacity: 1;
 }

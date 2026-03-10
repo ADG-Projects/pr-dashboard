@@ -1,6 +1,8 @@
-/** Tooltip wrapper with viewport-aware positioning via fixed positioning. */
+/** Tooltip wrapper with viewport-aware positioning via a portal.
+ *  Renders the tip into document.body so ancestor transforms don't break fixed positioning. */
 
-import { useRef, useCallback, type ReactNode, type CSSProperties } from 'react';
+import { useRef, useState, useCallback, type ReactNode, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import styles from './Tooltip.module.css';
 
 interface Props {
@@ -17,6 +19,7 @@ const EDGE_PAD = 6;
 export function Tooltip({ text, children, position = 'top', style, disabled }: Props) {
   const tipRef = useRef<HTMLSpanElement>(null);
   const wrapperRef = useRef<HTMLSpanElement>(null);
+  const [visible, setVisible] = useState(false);
 
   const reposition = useCallback(() => {
     const tip = tipRef.current;
@@ -58,18 +61,30 @@ export function Tooltip({ text, children, position = 'top', style, disabled }: P
     tip.style.left = `${left}px`;
   }, [position]);
 
+  const handleEnter = useCallback(() => {
+    setVisible(true);
+    // Reposition after the portal renders
+    requestAnimationFrame(() => reposition());
+  }, [reposition]);
+
+  const handleLeave = useCallback(() => {
+    setVisible(false);
+  }, []);
+
   return (
     <span
       ref={wrapperRef}
       className={styles.wrapper}
       style={style}
-      onMouseEnter={reposition}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
     >
       {children}
-      {!disabled && (
-        <span ref={tipRef} className={styles.tip}>
+      {!disabled && visible && createPortal(
+        <span ref={tipRef} className={`${styles.tip} ${styles.tipVisible}`}>
           {text}
-        </span>
+        </span>,
+        document.body,
       )}
     </span>
   );

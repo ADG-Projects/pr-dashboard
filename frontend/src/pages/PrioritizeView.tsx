@@ -285,12 +285,16 @@ export function PrioritizeView() {
       const quickWins = prs.filter((p) => p.priority_breakdown.size >= 12 && p.priority_score >= 40).length;
       return (
         <div className={styles.summaryBar}>
-          <span className={styles.summaryItem}>
-            <span className={styles.summaryCount}>{prs.length}</span> to review
-          </span>
-          <span className={`${styles.summaryItem} ${styles.summaryGreen}`}>
-            <span className={styles.summaryCount}>{quickWins}</span> quick wins
-          </span>
+          <Tooltip text="PRs where you're a requested reviewer or have unfinished reviews" position="bottom">
+            <span className={styles.summaryItem}>
+              <span className={styles.summaryCount}>{prs.length}</span> to review
+            </span>
+          </Tooltip>
+          <Tooltip text="Small PRs (≤200 lines) with a score above 40, easy to knock out" position="bottom">
+            <span className={`${styles.summaryItem} ${styles.summaryGreen}`}>
+              <span className={styles.summaryCount}>{quickWins}</span> quick wins
+            </span>
+          </Tooltip>
         </div>
       );
     }
@@ -299,16 +303,22 @@ export function PrioritizeView() {
       const needAction = prs.filter((p) => p.priority_breakdown.review === 30 || p.priority_breakdown.ci >= 20 || p.priority_breakdown.mergeable === 15).length;
       return (
         <div className={styles.summaryBar}>
-          <span className={styles.summaryItem}>
-            <span className={styles.summaryCount}>{prs.length}</span> open
-          </span>
-          <span className={`${styles.summaryItem} ${styles.summaryGreen}`}>
-            <span className={styles.summaryCount}>{readyToMerge}</span> ready to merge
-          </span>
-          {needAction > 0 && (
-            <span className={`${styles.summaryItem} ${styles.summaryRed}`}>
-              <span className={styles.summaryCount}>{needAction}</span> need action
+          <Tooltip text="Your open PRs across tracked repos" position="bottom">
+            <span className={styles.summaryItem}>
+              <span className={styles.summaryCount}>{prs.length}</span> open
             </span>
+          </Tooltip>
+          <Tooltip text="Approved, CI passing, no conflicts" position="bottom">
+            <span className={`${styles.summaryItem} ${styles.summaryGreen}`}>
+              <span className={styles.summaryCount}>{readyToMerge}</span> ready to merge
+            </span>
+          </Tooltip>
+          {needAction > 0 && (
+            <Tooltip text="Changes requested, CI broken, or has merge conflicts" position="bottom">
+              <span className={`${styles.summaryItem} ${styles.summaryRed}`}>
+                <span className={styles.summaryCount}>{needAction}</span> need action
+              </span>
+            </Tooltip>
           )}
         </div>
       );
@@ -318,15 +328,21 @@ export function PrioritizeView() {
     const needsAttentionCount = prs.filter((p) => p.priority_score < 40).length;
     return (
       <div className={styles.summaryBar}>
-        <span className={styles.summaryItem}>
-          <span className={styles.summaryCount}>{prs.length}</span> open
-        </span>
-        <span className={`${styles.summaryItem} ${styles.summaryGreen}`}>
-          <span className={styles.summaryCount}>{readyCount}</span> ready to merge
-        </span>
-        <span className={`${styles.summaryItem} ${styles.summaryRed}`}>
-          <span className={styles.summaryCount}>{needsAttentionCount}</span> needs attention
-        </span>
+        <Tooltip text="All open PRs across tracked repos" position="bottom">
+          <span className={styles.summaryItem}>
+            <span className={styles.summaryCount}>{prs.length}</span> open
+          </span>
+        </Tooltip>
+        <Tooltip text="Score ≥70 and not blocked by a parent PR" position="bottom">
+          <span className={`${styles.summaryItem} ${styles.summaryGreen}`}>
+            <span className={styles.summaryCount}>{readyCount}</span> ready to merge
+          </span>
+        </Tooltip>
+        <Tooltip text="Score below 40, likely blocked or failing CI" position="bottom">
+          <span className={`${styles.summaryItem} ${styles.summaryRed}`}>
+            <span className={styles.summaryCount}>{needsAttentionCount}</span> needs attention
+          </span>
+        </Tooltip>
       </div>
     );
   })();

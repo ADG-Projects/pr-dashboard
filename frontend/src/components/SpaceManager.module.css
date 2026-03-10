@@ -133,12 +133,14 @@
 }
 
 .visibilityHidden {
-  background: var(--accent-green-bg);
-  border-color: var(--accent-green);
-  color: var(--accent-green);
+  background: transparent;
+  border-color: var(--border-default);
+  color: var(--text-muted);
 }
 .visibilityHidden:hover {
-  filter: brightness(1.2);
+  background: var(--bg-elevated);
+  border-color: var(--text-dim);
+  color: var(--text-primary);
 }
 
 .spaceName {

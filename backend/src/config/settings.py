@@ -1,5 +1,8 @@
 """Configuration settings for the PR Dashboard."""
 
+import os
+
+from loguru import logger
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -34,6 +37,38 @@ class Settings(BaseSettings):
             self.database_url = self.database_url.replace(
                 "postgresql://", "postgresql+asyncpg://", 1
             )
+        return self
+
+    @model_validator(mode="after")
+    def _check_production_defaults(self) -> "Settings":
+        """Block startup in production if insecure defaults are still in use."""
+        is_production = bool(os.environ.get("RAILWAY_ENVIRONMENT"))
+        default_secret = self.secret_key == "change-me-in-production"
+        default_db = "postgres:postgres@" in self.database_url
+
+        if is_production:
+            if default_secret:
+                raise ValueError(
+                    "SECRET_KEY is still the default value. "
+                    "Set a secure SECRET_KEY before deploying to production."
+                )
+            if default_db:
+                raise ValueError(
+                    "DATABASE_URL still uses default postgres:postgres credentials. "
+                    "Set a secure DATABASE_URL before deploying to production."
+                )
+        else:
+            if default_secret:
+                logger.warning(
+                    "SECRET_KEY is the default value. "
+                    "Set a secure SECRET_KEY before deploying to production."
+                )
+            if default_db:
+                logger.warning(
+                    "DATABASE_URL uses default postgres:postgres credentials. "
+                    "Set a secure DATABASE_URL before deploying to production."
+                )
+
         return self
 
     # Sync

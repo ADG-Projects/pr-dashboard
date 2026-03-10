@@ -299,17 +299,21 @@ async def github_oauth_callback(code: str, state: str, request: Request) -> Redi
     async with async_session_factory() as session:
         # In link mode, attach to the currently signed-in user
         # In sign-in mode, create/find user from GitHub identity
-        # Auto-upgrade to link mode if user already has a session cookie
+        # Auto-upgrade to link mode if user already has a valid session cookie
         existing_user_id = get_github_user_id(request)
-        if existing_user_id and not link_mode:
-            link_mode = True
-            logger.info(f"Auto-linking: user {existing_user_id} already authenticated")
+        if existing_user_id:
+            existing_user = await session.get(User, existing_user_id)
+            if not existing_user:
+                # Stale cookie (e.g. DB was reset), fall back to sign-in mode
+                existing_user_id = None
+                logger.info("Ignoring stale session cookie, user no longer exists")
+            elif not link_mode:
+                link_mode = True
+                logger.info(f"Auto-linking: user {existing_user_id} already authenticated")
 
         if existing_user_id and link_mode:
             # Link mode: add this GitHub account to the existing user
-            user = await session.get(User, existing_user_id)
-            if not user:
-                return RedirectResponse(url=f"{base}/?error=user_not_found")
+            user = existing_user
         else:
             # Sign-in mode: find/create user from GitHub identity
             result = await session.execute(select(User).where(User.github_id == gh_user["id"]))

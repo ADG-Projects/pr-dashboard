@@ -181,8 +181,8 @@ export function Shell() {
         </div>
       </header>
       {banner && (
-        <div className={styles.banner}>
-          <span>{banner}</span>
+        <div className={`${styles.banner} ${banner.type === 'error' ? styles.bannerError : ''}`}>
+          <span>{banner.message}</span>
           <button className={styles.bannerDismiss} onClick={() => setBanner(null)}>&times;</button>
         </div>
       )}

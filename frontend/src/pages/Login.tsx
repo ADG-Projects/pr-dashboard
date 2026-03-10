@@ -3,9 +3,10 @@ import styles from './Login.module.css';
 
 interface Props {
   onLogin: () => void;
+  oauthError?: string | null;
 }
 
-export function Login({ onLogin }: Props) {
+export function Login({ onLogin, oauthError }: Props) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,7 +44,7 @@ export function Login({ onLogin }: Props) {
       <form className={styles.card} onSubmit={handleSubmit}>
         <h1 className={styles.title}>PR Dashboard</h1>
         <p className={styles.subtitle}>Enter password to continue</p>
-        {error && <div className={styles.error}>{error}</div>}
+        {(error || oauthError) && <div className={styles.error}>{error || oauthError}</div>}
         <input
           className={styles.input}
           type="password"

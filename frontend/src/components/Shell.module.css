@@ -236,6 +236,12 @@
   animation: bannerFadeIn 0.3s ease;
 }
 
+.bannerError {
+  background: rgba(215, 58, 74, 0.12);
+  color: var(--ci-fail, #d73a4a);
+  border-bottom-color: rgba(215, 58, 74, 0.25);
+}
+
 .bannerDismiss {
   background: none;
   border: none;

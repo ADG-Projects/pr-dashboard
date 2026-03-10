@@ -26,12 +26,17 @@ const queryClient = new QueryClient({
   }),
 });
 
+export interface BannerInfo {
+  message: string;
+  type: 'info' | 'error';
+}
+
 interface UserContextValue {
   user: GitHubUser | null;
   setUser: (u: GitHubUser | null) => void;
   oauthConfigured: boolean;
-  banner: string | null;
-  setBanner: (b: string | null) => void;
+  banner: BannerInfo | null;
+  setBanner: (b: BannerInfo | null) => void;
 }
 
 export const UserContext = createContext<UserContextValue>({
@@ -52,7 +57,8 @@ export default function App() {
   const [authEnabled, setAuthEnabled] = useState(true);
   const [user, setUser] = useState<GitHubUser | null>(null);
   const [oauthConfigured, setOauthConfigured] = useState(false);
-  const [banner, setBanner] = useState<string | null>(null);
+  const [banner, setBanner] = useState<BannerInfo | null>(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
 
@@ -74,12 +80,28 @@ export default function App() {
         if (data.user) setUser(data.user);
         setAuthChecked(true);
 
-        // Show banner when OAuth linked to an existing account
+        // Handle OAuth redirect params
         const params = new URLSearchParams(window.location.search);
-        if (params.get('linked_existing') === 'true' && data.user) {
-          setBanner(
-            `This GitHub identity was already linked to your account. Signed in as ${data.user.name || data.user.login}.`,
-          );
+        const errorCode = params.get('error');
+        if (errorCode) {
+          const messages: Record<string, string> = {
+            invalid_state: 'Sign-in failed: invalid or expired link. Please try again.',
+            state_expired: 'Sign-in link expired. Please try again.',
+            token_exchange_failed: 'GitHub is temporarily unavailable. Please try again in a moment.',
+            no_token: 'GitHub did not return an access token. Please try again.',
+            user_fetch_failed: 'Could not fetch your GitHub profile. Please try again.',
+            user_not_found: 'Your session has expired. Please sign in again.',
+          };
+          const msg = messages[errorCode] || `Sign-in failed: ${errorCode.replace(/_/g, ' ')}`;
+          // Set both: oauthError for Login page, banner for Shell (if already authenticated)
+          setOauthError(msg);
+          setBanner({ message: msg, type: 'error' });
+          window.history.replaceState({}, '', window.location.pathname);
+        } else if (params.get('linked_existing') === 'true' && data.user) {
+          setBanner({
+            message: `This GitHub identity was already linked to your account. Signed in as ${data.user.name || data.user.login}.`,
+            type: 'info',
+          });
           window.history.replaceState({}, '', window.location.pathname);
           setTimeout(() => setBanner(null), 8000);
         }
@@ -98,7 +120,7 @@ export default function App() {
   }
 
   if (authEnabled && !authenticated) {
-    return <Login onLogin={handleLogin} />;
+    return <Login onLogin={handleLogin} oauthError={oauthError} />;
   }
 
   return (

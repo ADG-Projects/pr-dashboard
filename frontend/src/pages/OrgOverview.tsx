@@ -34,7 +34,7 @@ function RepoBrowser({ space, onClose }: { space: Space; onClose: () => void }) 
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
 
-  const { data: available, isLoading, isFetching, refetch } = useQuery({
+  const { data: available, isLoading, isFetching, refetch, isError, error } = useQuery({
     queryKey: ['available-repos', space.id],
     queryFn: () => api.listSpaceAvailableRepos(space.id),
     staleTime: 5 * 60 * 1000,
@@ -110,7 +110,12 @@ function RepoBrowser({ space, onClose }: { space: Space; onClose: () => void }) 
           {isLoading && (
             <div className={styles.listEmpty}>Loading repos...</div>
           )}
-          {!isLoading && filtered.length === 0 && (
+          {!isLoading && isError && (
+            <div className={styles.listEmpty} style={{ color: 'var(--ci-fail, #d73a4a)' }}>
+              {error instanceof Error ? error.message : 'Failed to load repos from GitHub'}
+            </div>
+          )}
+          {!isLoading && !isError && filtered.length === 0 && (
             <div className={styles.listEmpty}>
               {search ? 'No matching repos' : 'All repos are already tracked'}
             </div>

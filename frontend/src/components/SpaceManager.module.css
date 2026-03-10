@@ -346,7 +346,6 @@
 /* Link button variants */
 .linkBtnSecondary {
   border-style: solid;
-  border-color: var(--accent-blue);
   opacity: 1;
   flex-direction: column;
   gap: 0.15rem;
@@ -374,6 +373,7 @@
 }
 
 .linkBtnPulse {
+  border-color: var(--accent-blue);
   animation: pulseGlowBlue 2s ease-in-out infinite;
 }
 

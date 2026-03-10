@@ -1,6 +1,6 @@
 /** Modal for managing linked GitHub accounts and discovered spaces. */
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type GitHubAccountInfo, type Space } from '../api/client';
 import { useCurrentUser } from '../App';
@@ -15,6 +15,8 @@ export function SpaceManager({ onClose }: Props) {
   const qc = useQueryClient();
   const { user, oauthConfigured } = useCurrentUser();
   const [showTokenForm, setShowTokenForm] = useState(false);
+  const [patLinked, setPatLinked] = useState(false);
+  const initialHadActiveRef = useRef<boolean | null>(null);
 
   const { data: accounts } = useQuery({
     queryKey: ['accounts'],
@@ -58,6 +60,13 @@ export function SpaceManager({ onClose }: Props) {
   });
 
   const hasActiveSpace = spaces?.some((s) => s.is_active) ?? false;
+
+  // Capture initial state on first load so guidance persists across
+  // space activations and only disappears after actually linking a new account.
+  if (initialHadActiveRef.current === null && spaces !== undefined) {
+    initialHadActiveRef.current = hasActiveSpace;
+  }
+  const showPatGuidance = !patLinked && initialHadActiveRef.current === false;
 
   // Group spaces by account
   const spacesByAccount = new Map<number, Space[]>();
@@ -149,6 +158,7 @@ export function SpaceManager({ onClose }: Props) {
             <TokenLinkForm
               onLinked={() => {
                 setShowTokenForm(false);
+                setPatLinked(true);
                 qc.invalidateQueries({ queryKey: ['accounts'] });
                 qc.invalidateQueries({ queryKey: ['spaces'] });
               }}
@@ -170,12 +180,12 @@ export function SpaceManager({ onClose }: Props) {
               )}
               {user && (
                 <>
-                  {!hasActiveSpace && (
+                  {showPatGuidance && (
                     <div className={styles.patHint}>
                       Need access to a GitHub Enterprise instance or want fine-grained token control? Link a Personal Access Token below.
                     </div>
                   )}
-                  <button className={`${styles.linkBtn} ${styles.linkBtnSecondary} ${!hasActiveSpace ? styles.linkBtnPulse : ''}`} onClick={() => setShowTokenForm(true)}>
+                  <button className={`${styles.linkBtn} ${styles.linkBtnSecondary} ${showPatGuidance ? styles.linkBtnPulse : ''}`} onClick={() => setShowTokenForm(true)}>
                     + Link with Personal Access Token
                     <span className={styles.linkBtnHint}>for GitHub Enterprise or fine-grained access</span>
                   </button>

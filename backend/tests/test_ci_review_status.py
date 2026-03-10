@@ -83,12 +83,12 @@ class TestComputeReviewState:
         reviews = [FakeReview("alice", "CHANGES_REQUESTED")]
         assert _compute_review_state(reviews) == "changes_requested"  # type: ignore[arg-type]
 
-    def test_changes_requested_takes_precedence(self):
+    def test_mixed_when_both_approved_and_changes_requested(self):
         reviews = [
             FakeReview("alice", "APPROVED", datetime(2025, 1, 1, 0, 0, tzinfo=UTC)),
             FakeReview("bob", "CHANGES_REQUESTED", datetime(2025, 1, 1, 0, 1, tzinfo=UTC)),
         ]
-        assert _compute_review_state(reviews) == "changes_requested"  # type: ignore[arg-type]
+        assert _compute_review_state(reviews) == "mixed"  # type: ignore[arg-type]
 
     def test_latest_review_per_reviewer_wins(self):
         """If alice first requests changes then approves, overall = approved."""

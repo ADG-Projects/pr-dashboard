@@ -55,6 +55,14 @@ function formatStatus(s: string): string {
   return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+const REVIEW_TOOLTIPS: Record<string, string> = {
+  approved: 'All reviewers approved',
+  changes_requested: 'Changes requested by reviewer(s)',
+  mixed: 'Has both approvals and unresolved change requests',
+  reviewed: 'Reviewed, but no approval or change request yet',
+  none: 'No reviews yet',
+};
+
 export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogin, dimAuthor, selectedPrNumber, onSelectPr, onRenameStack, nameMap }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [editingStackId, setEditingStackId] = useState<number | null>(null);
@@ -254,6 +262,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
     if (pr.review_state === 'approved' && !pr.rebased_since_approval) return styles.borderApproved;
     if (pr.review_state === 'approved' && pr.rebased_since_approval) return styles.borderRebased;
     if (pr.review_state === 'changes_requested') return styles.borderChanges;
+    if (pr.review_state === 'mixed') return styles.borderMixed;
     if (pr.review_state === 'reviewed') return styles.borderReviewed;
     return '';
   }
@@ -307,7 +316,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
           <Tooltip text={`CI: ${formatStatus(pr.ci_status)}`} position="top">
             <StatusDot status={pr.ci_status} size={7} />
           </Tooltip>
-          <Tooltip text={`Review: ${formatStatus(pr.review_state)}`} position="top">
+          <Tooltip text={REVIEW_TOOLTIPS[pr.review_state] || `Review: ${formatStatus(pr.review_state)}`} position="top">
             <StatusDot status={pr.review_state} size={7} />
           </Tooltip>
           {pr.rebased_since_approval && (

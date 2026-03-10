@@ -100,9 +100,13 @@ def _compute_review_state(reviews: list[Review]) -> str:
     for r in sorted(reviews, key=lambda x: x.submitted_at):
         latest[r.reviewer] = r.state
     states = set(latest.values())
-    if "CHANGES_REQUESTED" in states:
+    has_changes = "CHANGES_REQUESTED" in states
+    has_approved = "APPROVED" in states
+    if has_changes and has_approved:
+        return "mixed"
+    if has_changes:
         return "changes_requested"
-    if "APPROVED" in states:
+    if has_approved:
         return "approved"
     if states - {"COMMENTED", "DISMISSED"}:
         return "reviewed"

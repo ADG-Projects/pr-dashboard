@@ -47,6 +47,9 @@
   --review-rebased: #fbbf24;
   --review-rebased-bg: rgba(251, 191, 36, 0.08);
   --review-rebased-border: rgba(251, 191, 36, 0.5);
+  --review-mixed: #fb923c;
+  --review-mixed-bg: rgba(251, 146, 60, 0.08);
+  --review-mixed-border: rgba(251, 146, 60, 0.5);
   --review-none: var(--ci-neutral);
   --review-none-bg: transparent;
   --review-none-border: var(--border-default);

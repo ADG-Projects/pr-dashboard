@@ -167,6 +167,7 @@ export function RepoView() {
   else if (stateFilter === 'reviewed') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.review_state === 'reviewed');
   else if (stateFilter === 'approved') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.review_state === 'approved');
   else if (stateFilter === 'changes_requested') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.review_state === 'changes_requested');
+  else if (stateFilter === 'mixed') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.review_state === 'mixed');
   else if (stateFilter === 'draft') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.draft);
   else if (stateFilter === 'merged') filtered = filtered.filter((p: PRSummary) => p.merged_at != null);
 
@@ -208,6 +209,7 @@ export function RepoView() {
     { value: 'reviewed', label: 'Reviewed' },
     { value: 'approved', label: 'Approved' },
     { value: 'changes_requested', label: 'Changes requested' },
+    { value: 'mixed', label: 'Mixed reviews' },
     { value: 'draft', label: 'Draft' },
     { value: 'merged', label: 'Recently merged' },
   ];

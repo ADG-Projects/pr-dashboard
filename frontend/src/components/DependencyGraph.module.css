@@ -305,6 +305,10 @@
   border-color: var(--review-commented-border);
   background: var(--review-commented-bg);
 }
+.borderMixed {
+  border-color: var(--review-mixed-border);
+  background: var(--review-mixed-bg);
+}
 .borderMerged {
   border-color: #8b5cf6;
   background: rgba(139, 92, 246, 0.06);

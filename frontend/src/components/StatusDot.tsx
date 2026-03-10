@@ -17,6 +17,7 @@ const STATUS_COLORS: Record<string, string> = {
   // Review — uses unified review tokens
   approved: 'var(--review-approved)',
   changes_requested: 'var(--review-changes)',
+  mixed: 'var(--review-mixed)',
   reviewed: 'var(--review-commented)',
   unknown: 'var(--ci-neutral)',
   none: 'var(--ci-neutral)',

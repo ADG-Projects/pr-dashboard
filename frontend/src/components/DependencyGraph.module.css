@@ -45,7 +45,6 @@
 }
 .card:hover {
   border-color: var(--accent-blue);
-  transform: translateY(-1px);
   box-shadow: 0 3px 12px rgba(97, 218, 251, 0.1);
 }
 
@@ -274,7 +273,6 @@
 }
 .standaloneCard:hover {
   border-color: var(--accent-blue);
-  transform: translateY(-1px);
   box-shadow: 0 3px 12px rgba(97, 218, 251, 0.1);
 }
 

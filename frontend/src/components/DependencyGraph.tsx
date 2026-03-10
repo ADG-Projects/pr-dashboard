@@ -50,6 +50,11 @@ interface StackLabel {
 
 const LABEL_H = 24;
 
+/** Format status strings: "changes_requested" -> "Changes Requested" */
+function formatStatus(s: string): string {
+  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogin, dimAuthor, selectedPrNumber, onSelectPr, onRenameStack, nameMap }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [editingStackId, setEditingStackId] = useState<number | null>(null);
@@ -299,10 +304,10 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
           )}
         </div>
         <div className={styles.cardFooter}>
-          <Tooltip text={`CI: ${pr.ci_status}`} position="top">
+          <Tooltip text={`CI: ${formatStatus(pr.ci_status)}`} position="top">
             <StatusDot status={pr.ci_status} size={7} />
           </Tooltip>
-          <Tooltip text={`Review: ${pr.review_state}`} position="top">
+          <Tooltip text={`Review: ${formatStatus(pr.review_state)}`} position="top">
             <StatusDot status={pr.review_state} size={7} />
           </Tooltip>
           {pr.rebased_since_approval && (

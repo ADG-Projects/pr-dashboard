@@ -28,7 +28,7 @@ export function StatusDot({ status, size = 8, title }: Props) {
     <span
       className={styles.dot}
       style={{ width: size, height: size, background: color }}
-      title={title || status}
+      title={title || status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
     />
   );
 }

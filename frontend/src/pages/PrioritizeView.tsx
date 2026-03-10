@@ -1,7 +1,7 @@
 /** Prioritize view — cross-repo ranked list of open PRs by priority score. */
 
 import { useQuery } from '@tanstack/react-query';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { api, type PrioritizedPR, type PriorityBreakdown, type PriorityMode, type RepoSummary } from '../api/client';
 import { useCurrentUser } from '../App';
 import { PRDetailPanel } from '../components/PRDetailPanel';
@@ -277,6 +277,12 @@ export function PrioritizeView() {
 
   const prs = items || [];
 
+  const prById = useMemo(() => {
+    const map = new Map<number, PrioritizedPR>();
+    for (const p of prs) map.set(p.pr.id, p);
+    return map;
+  }, [prs]);
+
   if (isLoading) return <div className={styles.loading}>Loading prioritized PRs...</div>;
 
   // Mode-specific summary stats
@@ -477,9 +483,17 @@ export function PrioritizeView() {
                     {item.stack_name && (
                       <span className={`${styles.badge} ${styles.badgeStack}`}>{item.stack_name}</span>
                     )}
-                    {item.blocked_by_pr_id && (
-                      <span className={`${styles.badge} ${styles.badgeAmber}`}>Blocked</span>
-                    )}
+                    {item.blocked_by_pr_id && (() => {
+                      const blocker = prById.get(item.blocked_by_pr_id);
+                      const tip = blocker
+                        ? `Blocked by #${blocker.pr.number}: ${blocker.pr.title}`
+                        : 'Blocked by another PR in this stack';
+                      return (
+                        <Tooltip text={tip} position="bottom">
+                          <span className={`${styles.badge} ${styles.badgeAmber}`}>Blocked</span>
+                        </Tooltip>
+                      );
+                    })()}
                     {getScoreSummary(item.priority_breakdown, item.pr.review_state, activeMode).map((p, i) => {
                       const cls = p.impact === 'positive' ? styles.badgeGreen
                         : p.impact === 'negative' ? styles.badgeRed

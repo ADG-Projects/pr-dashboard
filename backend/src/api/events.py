@@ -29,4 +29,4 @@ async def _event_generator(
 async def sse_stream() -> EventSourceResponse:
     """SSE stream for real-time progress and CI updates."""
     queue = await subscribe()
-    return EventSourceResponse(_event_generator(queue))
+    return EventSourceResponse(_event_generator(queue), ping=15)

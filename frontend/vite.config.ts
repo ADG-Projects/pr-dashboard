@@ -6,6 +6,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      "/api/events": {
+        target: "http://127.0.0.1:9000",
+        changeOrigin: true,
+        headers: { Accept: "text/event-stream" },
+      },
       "/api": {
         target: "http://127.0.0.1:9000",
         changeOrigin: true,

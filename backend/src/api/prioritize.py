@@ -101,12 +101,14 @@ def _compute_ball_in_my_court(
     reviews: list[Review],
     user_logins: set[str],
     head_sha: str | None,
+    author_last_commented_at: datetime | None = None,
 ) -> int:
     """Compute "ball in my court" score (max 35) for review mode.
 
     - Never reviewed this PR → 35 (I'm blocking)
     - I reviewed, author rebased/pushed since → 30 (my turn again)
     - I approved but rebased since my approval → 30 (needs re-review)
+    - I reviewed, author replied to comments since → 25 (check their response)
     - I reviewed/approved and nothing changed since → 0 (ball in author's court)
     """
     # Find my latest review on this PR
@@ -119,6 +121,10 @@ def _compute_ball_in_my_court(
     # If head_sha differs from the commit I last reviewed, author pushed new changes
     if head_sha and latest.commit_id and latest.commit_id != head_sha:
         return 30  # Author pushed after my review, my turn again
+
+    # If author commented after my latest review, ball is back in my court
+    if author_last_commented_at and author_last_commented_at > latest.submitted_at:
+        return 25  # Author replied to comments
 
     # I reviewed but nothing changed since
     return 0
@@ -133,10 +139,11 @@ def compute_review_score(
     created_at: datetime,
     draft: bool,
     head_sha: str | None,
+    author_last_commented_at: datetime | None = None,
 ) -> tuple[int, PriorityBreakdown]:
     """Scoring for review mode (max 100): "What should I review next?"."""
     # Ball in my court (max 35)
-    ball_pts = _compute_ball_in_my_court(reviews, user_logins, head_sha)
+    ball_pts = _compute_ball_in_my_court(reviews, user_logins, head_sha, author_last_commented_at)
 
     # CI passing (max 20) — no point reviewing if CI is red
     ci_scores = {"success": 20, "pending": 8, "unknown": 4, "failure": 0}
@@ -509,6 +516,7 @@ async def list_prioritized(
                 created_at=pr.created_at,
                 draft=pr.draft,
                 head_sha=pr.head_sha,
+                author_last_commented_at=pr.author_last_commented_at,
             )
         elif user_logins and mode == "owner":
             score, breakdown = compute_owner_score(

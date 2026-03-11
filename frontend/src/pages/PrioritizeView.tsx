@@ -81,6 +81,7 @@ function scoreSummaryReview(b: PriorityBreakdown): ScoredPhrase[] {
   // Ball in my court (max 35)
   if (b.review === 35) phrases.push({ text: 'Never reviewed', tip: "You haven't reviewed this PR yet, you're blocking", impact: 'negative', priority: 9 });
   else if (b.review === 30) phrases.push({ text: 'New changes', tip: 'Author pushed new commits since your last review', impact: 'negative', priority: 8 });
+  else if (b.review === 25) phrases.push({ text: 'Author replied', tip: 'Author commented since your last review, check their response', impact: 'negative', priority: 7 });
   else if (b.review === 0) phrases.push({ text: 'Waiting on author', tip: "You've reviewed and nothing changed since, ball is in author's court", impact: 'positive', priority: 1 });
 
   // CI (max 20)

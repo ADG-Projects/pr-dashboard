@@ -159,8 +159,17 @@ async def list_available_repos(
                 f"Cannot list org repos for {space.slug} ({exc.response.status_code}), "
                 f"falling back to /user/repos"
             )
-            all_repos = await gh.list_all_repos()
-            repos = [r for r in all_repos if r["owner"]["login"] == space.slug]
+            try:
+                all_repos = await gh.list_all_repos()
+                repos = [r for r in all_repos if r["owner"]["login"] == space.slug]
+            except httpx.HTTPStatusError as fallback_exc:
+                detail = f"GitHub API returned {fallback_exc.response.status_code}"
+                if fallback_exc.response.status_code == 403:
+                    detail = (
+                        "GitHub API rate limit exceeded or token lacks permission. "
+                        "Try again in a few minutes."
+                    )
+                raise HTTPException(status_code=502, detail=detail) from fallback_exc
         else:
             await gh.close()
             raise

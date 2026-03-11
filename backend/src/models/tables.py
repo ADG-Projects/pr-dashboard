@@ -173,6 +173,9 @@ class PullRequest(Base):
         JSON().with_variant(JSONB, "postgresql"), default=list
     )
     manual_priority: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    author_last_commented_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     quality_snapshots: Mapped[list["QualitySnapshot"]] = relationship(
         back_populates="pull_request", cascade="all, delete-orphan"
     )

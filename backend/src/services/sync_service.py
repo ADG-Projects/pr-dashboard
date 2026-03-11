@@ -211,9 +211,10 @@ class SyncService:
                 else:
                     await self._upsert_reviews(session, pr.id, reviews_result, gh_client=github)
 
-                # Extract unique commenters (excluding PR author)
+                # Extract unique commenters (excluding PR author) and track author's latest comment
                 commenter_logins: set[str] = set()
                 pr_author = gh_pr["user"]["login"]
+                author_last_commented_at: datetime | None = None
                 for comments_result in (issue_comments_result, review_comments_result):
                     if isinstance(comments_result, Exception):
                         logger.warning(
@@ -223,9 +224,16 @@ class SyncService:
                         continue
                     for comment in comments_result:
                         login = comment.get("user", {}).get("login")
-                        if login and login != pr_author:
+                        if login and login == pr_author:
+                            ts = parse_gh_datetime(comment.get("created_at"))
+                            if ts and (
+                                author_last_commented_at is None or ts > author_last_commented_at
+                            ):
+                                author_last_commented_at = ts
+                        elif login:
                             commenter_logins.add(login)
                 pr.commenters = sorted(commenter_logins)
+                pr.author_last_commented_at = author_last_commented_at
 
             # Detect stale PRs: open in DB but not returned by GitHub
             db_open_prs = (

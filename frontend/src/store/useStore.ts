@@ -22,6 +22,10 @@ interface AppState {
   /** Sidebar collapsed */
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
+
+  /** Collapsed stack IDs */
+  collapsedStacks: Set<number>;
+  toggleStackCollapsed: (stackId: number) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -39,4 +43,18 @@ export const useStore = create<AppState>((set) => ({
 
   sidebarCollapsed: false,
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+
+  collapsedStacks: (() => {
+    try {
+      const stored = localStorage.getItem('collapsedStacks');
+      return stored ? new Set(JSON.parse(stored) as number[]) : new Set();
+    } catch { return new Set(); }
+  })(),
+  toggleStackCollapsed: (stackId) => set((s) => {
+    const next = new Set(s.collapsedStacks);
+    if (next.has(stackId)) next.delete(stackId);
+    else next.add(stackId);
+    try { localStorage.setItem('collapsedStacks', JSON.stringify([...next])); } catch {}
+    return { collapsedStacks: next };
+  }),
 }));

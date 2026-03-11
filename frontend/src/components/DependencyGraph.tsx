@@ -9,6 +9,7 @@ import { useMemo, useRef, useCallback, useState } from 'react';
 import type { PRSummary, Stack } from '../api/client';
 import { StatusDot } from './StatusDot';
 import { Tooltip } from './Tooltip';
+import { useStore } from '../store/useStore';
 import styles from './DependencyGraph.module.css';
 
 interface Props {
@@ -103,6 +104,8 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
   const containerRef = useRef<HTMLDivElement>(null);
   const [editingStackId, setEditingStackId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
+  const collapsedStacks = useStore((s) => s.collapsedStacks);
+  const toggleStackCollapsed = useStore((s) => s.toggleStackCollapsed);
   // Build highlighted PR set
   const highlightedPrIds = useMemo(() => {
     if (highlightStackId == null) return null;
@@ -165,14 +168,23 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
     // Siblings stack vertically; parent centered among children.
     const positions: CardPos[] = [];
     const labels: StackLabel[] = [];
-    let globalRow = 0; // next available row across all trees
+    const prToStackId = new Map<number, number>();
+
+    // Track cumulative Y offset for labels (accounts for collapsed stacks taking less space)
+    let labelY = PAD;
 
     for (const root of roots) {
-      // Track the Y offset for this tree's label
-      const treeTopY = PAD + globalRow * (CARD_H + GAP_Y);
-
       // Match root to its stack for the label
       const stack = rootToStack.get(root.id);
+      if (stack) {
+        // Map all PRs in this stack to the stack id
+        for (const member of stack.members) {
+          prToStackId.set(member.pr.id, stack.id);
+        }
+      }
+
+      const treeTopY = labelY;
+
       if (stack) {
         labels.push({
           stackId: stack.id,
@@ -182,17 +194,26 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
         });
       }
 
+      // If this stack is collapsed, only reserve space for the label row
+      const isCollapsed = stack && collapsedStacks.has(stack.id);
+      if (isCollapsed) {
+        labelY += LABEL_H + 8; // just the label + small gap
+        continue;
+      }
+
       // Label offset pushes cards down within this tree
       const labelOffset = stack ? LABEL_H : 0;
+      const baseY = treeTopY + labelOffset;
 
       // Recursive function: returns the row span [startRow, endRow] used
+      // Rows are relative (starting from 0 for this tree)
       function layoutNode(pr: PRSummary, depth: number, startRow: number): number {
         const kids = children.get(pr.id) || [];
         if (kids.length === 0) {
           // Leaf node
           positions.push({
             x: PAD + depth * (CARD_W + GAP_X),
-            y: PAD + startRow * (CARD_H + GAP_Y) + labelOffset,
+            y: baseY + startRow * (CARD_H + GAP_Y),
             pr,
           });
           return startRow; // occupied one row
@@ -211,15 +232,16 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
         const parentRow = (childRows[0] + childRows[childRows.length - 1]) / 2;
         positions.push({
           x: PAD + depth * (CARD_W + GAP_X),
-          y: PAD + parentRow * (CARD_H + GAP_Y) + labelOffset,
+          y: baseY + parentRow * (CARD_H + GAP_Y),
           pr,
         });
 
         return nextRow - 1; // last row used
       }
 
-      const lastRow = layoutNode(root, 0, globalRow);
-      globalRow = lastRow + 1;
+      const lastRow = layoutNode(root, 0, 0);
+      const treeRows = lastRow + 1;
+      labelY = baseY + treeRows * (CARD_H + GAP_Y);
     }
 
     // Position map for arrow computation
@@ -266,12 +288,16 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
       arrowList.push({ key: `${parent.id}-${pos.pr.id}`, d, dimmed });
     }
 
-    // SVG dimensions
+    // Container dimensions (include labels for collapsed stacks)
     let maxX = 0;
     let maxY = 0;
     for (const pos of positions) {
       maxX = Math.max(maxX, pos.x + CARD_W);
       maxY = Math.max(maxY, pos.y + CARD_H);
+    }
+    for (const label of labels) {
+      maxX = Math.max(maxX, label.x + 300);
+      maxY = Math.max(maxY, label.y);
     }
 
     return {
@@ -282,7 +308,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
       svgW: maxX + PAD,
       svgH: maxY + PAD,
     };
-  }, [prs, stacks, highlightedPrIds]);
+  }, [prs, stacks, highlightedPrIds, collapsedStacks]);
 
   const isDimmed = useCallback((pr: PRSummary) => {
     if (highlightedPrIds != null && !highlightedPrIds.has(pr.id)) return true;
@@ -381,7 +407,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
 
   return (
     <div className={styles.graphArea} ref={containerRef}>
-      {layout.length > 0 && (
+      {(layout.length > 0 || stackLabels.length > 0) && (
         <div className={styles.graphContainer} style={{ width: svgW, height: svgH }}>
           <svg className={styles.svg} width={svgW} height={svgH}>
             <defs>
@@ -405,6 +431,12 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
               className={styles.stackLabel}
               style={{ left: label.x, top: label.y - LABEL_H }}
             >
+              <span
+                className={`${styles.collapseToggle} ${collapsedStacks.has(label.stackId) ? styles.collapseToggleCollapsed : ''}`}
+                onClick={(e) => { e.stopPropagation(); toggleStackCollapsed(label.stackId); }}
+              >
+                {'\u25BC'}
+              </span>
               {editingStackId === label.stackId ? (
                 <input
                   className={styles.stackLabelInput}

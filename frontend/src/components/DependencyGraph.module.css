@@ -203,6 +203,21 @@
   color: var(--text-secondary);
 }
 
+.collapseToggle {
+  display: inline-block;
+  font-size: 0.55rem;
+  margin-right: 5px;
+  cursor: pointer;
+  transition: transform 0.2s;
+  color: var(--text-dim);
+}
+.collapseToggle:hover {
+  color: var(--text-secondary);
+}
+.collapseToggleCollapsed {
+  transform: rotate(-90deg);
+}
+
 .stackLabelText {
   display: inline-flex;
   align-items: center;
@@ -237,8 +252,9 @@
 
 /* Standalone PRs grid */
 .standaloneSection {
-  margin-top: 1.5rem;
-  padding-top: 1rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  padding-left: 20px;
   border-top: 1px solid var(--border-default);
 }
 

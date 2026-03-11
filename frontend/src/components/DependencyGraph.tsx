@@ -5,7 +5,7 @@
  * Standalone PRs shown in a flexbox grid below.
  */
 
-import { useMemo, useRef, useCallback, useState } from 'react';
+import { useMemo, useRef, useCallback, useState, useEffect } from 'react';
 import type { PRSummary, Stack } from '../api/client';
 import { StatusDot } from './StatusDot';
 import { Tooltip } from './Tooltip';
@@ -343,6 +343,17 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
     return false;
   }, [highlightedPrIds, dimReviewerLogin, dimAuthor, dimBranchTarget]);
 
+  // Auto-scroll to selected card after layout reflow (panel open/close causes reflow)
+  useEffect(() => {
+    if (selectedPrNumber == null) return;
+    requestAnimationFrame(() => {
+      const card = containerRef.current?.querySelector<HTMLElement>(
+        `[data-pr-number="${selectedPrNumber}"]`
+      );
+      card?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }, [selectedPrNumber]);
+
   function readinessBorderClass(pr: PRSummary): string {
     if (pr.merged_at) return styles.borderMerged;
 
@@ -536,6 +547,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
                 className={`${styles.card} ${isSelected ? styles.cardSelected : ''} ${dimmed ? styles.cardDimmed : ''} ${readinessBorderClass(pos.pr)}`}
                 style={{ left: pos.x, top: pos.y, width: CARD_W, height: CARD_H }}
                 data-pr-card
+                data-pr-number={pos.pr.number}
                 onClick={() => onSelectPr(isSelected ? null : pos.pr.number)}
               >
                 {renderCard(pos.pr)}
@@ -559,6 +571,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
                   key={pr.id}
                   className={`${styles.standaloneCard} ${isSelected ? styles.cardSelected : ''} ${dimmed ? styles.cardDimmed : ''} ${readinessBorderClass(pr)}`}
                   data-pr-card
+                  data-pr-number={pr.number}
                   onClick={() => onSelectPr(isSelected ? null : pr.number)}
                 >
                   {renderCard(pr)}

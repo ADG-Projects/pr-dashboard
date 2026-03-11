@@ -107,6 +107,16 @@ export function RepoView() {
     }
   }, [repos, repo, navigate]);
 
+  // When first sync completes, invalidate pulls/stacks so they refetch immediately
+  const prevSyncedAt = useRef(repo?.last_synced_at);
+  useEffect(() => {
+    if (!prevSyncedAt.current && repo?.last_synced_at && repo?.id) {
+      qc.invalidateQueries({ queryKey: ['pulls', repo.id], refetchType: 'active' });
+      qc.invalidateQueries({ queryKey: ['stacks', repo.id], refetchType: 'active' });
+    }
+    prevSyncedAt.current = repo?.last_synced_at;
+  }, [repo?.last_synced_at, repo?.id, qc]);
+
   // Apply repo color tint to the Shell's .main scroll container
   const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {

@@ -21,20 +21,18 @@ export function Shell() {
   const { connected } = useSSE();
   const isReposSection = location.pathname === '/' || location.pathname.startsWith('/repos');
   const isPrioritize = location.pathname === '/prioritise' || location.pathname === '/prioritize';
-  const lastRepoPath = useStore((s) => s.lastRepoPath);
+  const lastReposSectionPath = useStore((s) => s.lastReposSectionPath);
 
   const handleReposClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    if (isReposSection && lastRepoPath && location.pathname === lastRepoPath) {
-      // Already on the last repo, go to root
+    if (isReposSection) {
+      // Already in repos section, go to overview
       navigate('/');
-    } else if (lastRepoPath && !isReposSection) {
-      // Coming from another section, go back to last repo
-      navigate(lastRepoPath);
     } else {
-      navigate('/');
+      // Coming from another section, return to last repos-section page
+      navigate(lastReposSectionPath ?? '/');
     }
-  }, [isReposSection, lastRepoPath, location.pathname, navigate]);
+  }, [isReposSection, lastReposSectionPath, navigate]);
   const [showTeam, setShowTeam] = useState(false);
   const [showSpaces, setShowSpaces] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);

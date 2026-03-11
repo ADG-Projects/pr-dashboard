@@ -2,11 +2,12 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { api, type RepoSummary, type Space, type AvailableRepo, type AvailableReposResponse } from '../api/client';
 import { useCurrentUser } from '../App';
 import { GitHubIcon } from '../components/GitHubIcon';
 import { Tooltip } from '../components/Tooltip';
+import { useStore } from '../store/useStore';
 import { repoColor } from '../utils/repoColors';
 import styles from './OrgOverview.module.css';
 
@@ -194,6 +195,12 @@ function RepoBrowser({ space, onClose }: { space: Space; onClose: () => void }) 
 
 export function OrgOverview() {
   const qc = useQueryClient();
+  const setLastReposSectionPath = useStore((s) => s.setLastReposSectionPath);
+
+  // Remember that we're on the overview so "Repos" tab returns here
+  useEffect(() => {
+    setLastReposSectionPath('/');
+  }, [setLastReposSectionPath]);
   const { user, oauthConfigured } = useCurrentUser();
   const { data: repos, isLoading: reposLoading } = useQuery({
     queryKey: ['repos'],

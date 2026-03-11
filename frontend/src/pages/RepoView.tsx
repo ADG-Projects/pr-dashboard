@@ -16,7 +16,7 @@ export function RepoView() {
   const { owner, name } = useParams<{ owner: string; name: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { selectedPrNumber, selectPr, setLastRepoPath } = useStore();
+  const { selectedPrNumber, selectPr, setLastReposSectionPath } = useStore();
   const { user: currentUser } = useCurrentUser();
 
   const [authorFilter, setAuthorFilter] = useState('');
@@ -45,8 +45,8 @@ export function RepoView() {
 
   // Remember this repo path so the "Repos" nav link can return here
   useEffect(() => {
-    if (owner && name) setLastRepoPath(`/repos/${owner}/${name}`);
-  }, [owner, name, setLastRepoPath]);
+    if (owner && name) setLastReposSectionPath(`/repos/${owner}/${name}`);
+  }, [owner, name, setLastReposSectionPath]);
 
   const hasActiveFilters = authorFilter !== '' || ciFilter !== '' || stackFilter !== null || reviewerFilter !== '' || priorityFilter !== '' || stateFilter !== 'open';
 

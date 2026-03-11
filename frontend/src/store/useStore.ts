@@ -15,9 +15,9 @@ interface AppState {
   detailOpen: boolean;
   setDetailOpen: (open: boolean) => void;
 
-  /** Last visited repo path (e.g. "/repos/org/name") for nav memory */
-  lastRepoPath: string | null;
-  setLastRepoPath: (path: string | null) => void;
+  /** Last visited repos-section path ("/" or "/repos/org/name") for nav memory */
+  lastReposSectionPath: string | null;
+  setLastReposSectionPath: (path: string | null) => void;
 
   /** Sidebar collapsed */
   sidebarCollapsed: boolean;
@@ -38,8 +38,8 @@ export const useStore = create<AppState>((set) => ({
   detailOpen: false,
   setDetailOpen: (open) => set({ detailOpen: open, selectedPrNumber: open ? undefined : null }),
 
-  lastRepoPath: null,
-  setLastRepoPath: (path) => set({ lastRepoPath: path }),
+  lastReposSectionPath: null,
+  setLastReposSectionPath: (path) => set({ lastReposSectionPath: path }),
 
   sidebarCollapsed: false,
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),

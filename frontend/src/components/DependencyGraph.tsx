@@ -151,6 +151,11 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
     }
 
     standalone.sort((a, b) => {
+      // Manual priority tiers: high=0, normal=1, low=2
+      const tierOrder = (p: PRSummary) =>
+        p.manual_priority === 'high' ? 0 : p.manual_priority === 'low' ? 2 : 1;
+      const tierDiff = tierOrder(a) - tierOrder(b);
+      if (tierDiff !== 0) return tierDiff;
       const scoreDiff = standalonePriorityScore(b) - standalonePriorityScore(a);
       if (scoreDiff !== 0) return scoreDiff;
       return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();

@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { api, type PrioritizedPR, type PriorityBreakdown, type PriorityMode, type RepoSummary } from '../api/client';
+import { api, type PrioritizedPR, type PriorityBreakdown, type PriorityMode, type RepoSummary, type User } from '../api/client';
 import { useCurrentUser } from '../App';
 import { PRDetailPanel } from '../components/PRDetailPanel';
 import { Tooltip } from '../components/Tooltip';
@@ -264,6 +264,26 @@ export function PrioritizeView() {
     queryFn: () => api.listRepos(),
   });
 
+  const { data: team } = useQuery({
+    queryKey: ['team'],
+    queryFn: api.listTeam,
+  });
+
+  // Build login → { displayName, avatar } from team data
+  const authorInfoMap = useMemo(() => {
+    const map = new Map<string, { displayName: string; avatar: string | null }>();
+    for (const m of (team || []) as User[]) {
+      const displayName = m.name || m.login;
+      for (const acct of m.linked_accounts || []) {
+        map.set(acct.login, { displayName, avatar: acct.avatar_url });
+      }
+      if (!map.has(m.login)) {
+        map.set(m.login, { displayName, avatar: m.avatar_url });
+      }
+    }
+    return map;
+  }, [team]);
+
   const { data: items, isLoading } = useQuery({
     queryKey: ['prioritized', filterRepoId, currentUser ? mode : 'default'],
     queryFn: () => api.listPrioritized(filterRepoId, currentUser ? mode : undefined),
@@ -479,9 +499,17 @@ export function PrioritizeView() {
                       #{item.pr.number}
                     </a>
                     <span className={styles.prTitle}>{item.pr.title}</span>
+                    {(() => {
+                      const info = authorInfoMap.get(item.pr.author);
+                      return (
+                        <span className={styles.authorWrap}>
+                          {info?.avatar && <img src={info.avatar} alt={item.pr.author} className={styles.authorAvatar} />}
+                          <span className={styles.author}>{info?.displayName || item.pr.author}</span>
+                        </span>
+                      );
+                    })()}
                   </div>
                   <div className={styles.prMeta}>
-                    <span className={styles.author}>{item.pr.author}</span>
                     <span className={styles.lines}>
                       <span className={styles.additions}>+{item.pr.additions}</span>
                       <span className={styles.deletions}>-{item.pr.deletions}</span>

@@ -74,6 +74,13 @@
 }
 .prNumber:hover { color: var(--accent-blue); text-decoration: none; }
 
+.cardAuthorAvatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 .cardAuthor {
   font-size: 0.62rem;
   color: var(--text-dim);

@@ -322,7 +322,7 @@
 
 .prTitleRow {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.4rem;
   margin-bottom: 0.25rem;
 }
@@ -354,6 +354,19 @@
   align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
+}
+
+.authorWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.authorAvatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .author {

@@ -202,6 +202,18 @@ export function PRDetailPanel({ repoId, prNumber, onClose, showRepoLink = true }
                 <span className={styles.branchName}>{pr.base_ref}</span>
               </Tooltip>
             </div>
+            <div className={styles.author}>
+              {avatarMap.get(pr.author) ? (
+                <img
+                  src={avatarMap.get(pr.author)}
+                  alt={pr.author}
+                  className={styles.authorAvatar}
+                />
+              ) : (
+                <span className={styles.authorAvatarPlaceholder} />
+              )}
+              <span className={styles.authorName}>{nameMap.get(pr.author) || pr.author}</span>
+            </div>
             {showRepoLink && repo && (
               <button
                 className={styles.repoViewLink}

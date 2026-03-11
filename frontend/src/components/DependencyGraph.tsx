@@ -354,7 +354,17 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
           >
             #{pr.number}
           </a>
-          {pr.author && <span className={styles.cardAuthor}>{nameMap?.get(pr.author)?.displayName || pr.author}</span>}
+          {pr.author && (
+            <>
+              {(() => {
+                const avatar = nameMap?.get(pr.author)?.avatar;
+                return avatar ? (
+                  <img src={avatar} alt={pr.author} className={styles.cardAuthorAvatar} />
+                ) : null;
+              })()}
+              <span className={styles.cardAuthor}>{nameMap?.get(pr.author)?.displayName || pr.author}</span>
+            </>
+          )}
           {pr.manual_priority === 'high' && <Tooltip text="High priority" position="top"><span className={styles.priorityHighBadge}>{'\u2191'}</span></Tooltip>}
           {pr.manual_priority === 'low' && <Tooltip text="Low priority" position="top"><span className={styles.priorityLowBadge}>{'\u2193'}</span></Tooltip>}
           {pr.draft && <Tooltip text="Draft PR — not ready for merge" position="top"><span className={styles.draftBadge}>Draft</span></Tooltip>}

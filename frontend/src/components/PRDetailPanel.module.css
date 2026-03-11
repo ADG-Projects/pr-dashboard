@@ -49,6 +49,34 @@
   color: var(--accent-teal);
 }
 
+.author {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.authorAvatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.authorAvatarPlaceholder {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-input);
+  flex-shrink: 0;
+}
+
+.authorName {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
 .repoViewLink {
   display: inline-flex;
   align-items: center;

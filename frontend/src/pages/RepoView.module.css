@@ -2,6 +2,7 @@
   display: flex;
   gap: 0;
   height: 100%;
+  position: relative;
 }
 
 .content {
@@ -43,6 +44,34 @@
 }
 .syncBtn:hover:not(:disabled) { background: var(--accent-green-dim); }
 .syncBtn:disabled { opacity: 0.5; }
+
+.syncIcon {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.2rem;
+  line-height: 1;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+}
+.syncIcon:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+.syncIcon:disabled {
+  cursor: default;
+}
+
+.syncIconSpinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--text-dim);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
 
 .filters {
   display: flex;
@@ -214,4 +243,13 @@
 
 .filterMenuItemIndented {
   padding-left: 1rem;
+}
+
+/* Small colored dot for repo identity */
+.repoDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
 }

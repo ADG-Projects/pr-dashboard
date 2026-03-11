@@ -123,6 +123,8 @@ class PRSummary(BaseModel):
     changed_files: int
     mergeable_state: str | None
     html_url: str
+    head_sha: str | None = None
+    commit_count: int = 0
     created_at: datetime
     updated_at: datetime
     ci_status: str = "unknown"  # computed: success, failure, pending, unknown

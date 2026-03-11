@@ -186,6 +186,7 @@ class SyncService:
                     pr.deletions = detail_result.get("deletions", 0)
                     pr.changed_files = detail_result.get("changed_files", 0)
                     pr.mergeable_state = detail_result.get("mergeable_state")
+                    pr.commit_count = detail_result.get("commits", 0)
 
                 if isinstance(runs_result, Exception):
                     logger.warning(

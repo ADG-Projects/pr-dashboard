@@ -83,6 +83,8 @@ export interface PRSummary {
   changed_files: number;
   mergeable_state: string | null;
   html_url: string;
+  head_sha: string | null;
+  commit_count: number;
   created_at: string;
   updated_at: string;
   ci_status: string;

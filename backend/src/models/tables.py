@@ -143,6 +143,7 @@ class PullRequest(Base):
     mergeable_state: Mapped[str | None] = mapped_column(String(50))
     html_url: Mapped[str] = mapped_column(String(1024), nullable=False)
     head_sha: Mapped[str | None] = mapped_column(String(40))
+    commit_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     merged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

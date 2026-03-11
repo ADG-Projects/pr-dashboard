@@ -53,6 +53,35 @@
   font-family: var(--font-mono);
   font-size: 0.68rem;
   color: var(--accent-teal);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+.branchName:hover {
+  color: var(--accent-blue);
+  text-decoration: underline;
+}
+
+.commitInfo {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  margin-top: 0.25rem;
+}
+.commitInfo a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.commitInfo a:hover {
+  color: var(--accent-blue);
+  text-decoration: underline;
+}
+.sha {
+  font-family: var(--font-mono);
+  color: var(--accent-blue);
+}
+.separator {
+  color: var(--text-dim);
 }
 
 .author {

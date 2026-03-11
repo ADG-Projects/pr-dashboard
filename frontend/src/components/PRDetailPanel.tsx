@@ -209,14 +209,46 @@ export function PRDetailPanel({ repoId, prNumber, onClose, showRepoLink = true }
               {' '}{pr.title}
             </h2>
             <div className={styles.branch}>
-              <Tooltip text="Feature branch" position="bottom">
-                <span className={styles.branchName}>{pr.head_ref}</span>
+              <Tooltip text="Feature branch — click to view on GitHub" position="bottom">
+                <a
+                  href={`${pr.html_url.replace(/\/pull\/\d+$/, '')}/tree/${pr.head_ref}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.branchName}
+                >{pr.head_ref}</a>
               </Tooltip>
               <span className={styles.arrow}>→</span>
-              <Tooltip text="Target branch" position="bottom">
-                <span className={styles.branchName}>{pr.base_ref}</span>
+              <Tooltip text="Target branch — click to view on GitHub" position="bottom">
+                <a
+                  href={`${pr.html_url.replace(/\/pull\/\d+$/, '')}/tree/${pr.base_ref}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.branchName}
+                >{pr.base_ref}</a>
               </Tooltip>
             </div>
+            {(pr.commit_count > 0 || pr.head_sha) && (
+              <div className={styles.commitInfo}>
+                {pr.commit_count > 0 && (
+                  <Tooltip text="View all commits in this PR" position="bottom">
+                    <a href={`${pr.html_url}/commits`} target="_blank" rel="noopener noreferrer">
+                      {pr.commit_count} {pr.commit_count === 1 ? 'commit' : 'commits'}
+                    </a>
+                  </Tooltip>
+                )}
+                {pr.commit_count > 0 && pr.head_sha && <span className={styles.separator}>·</span>}
+                {pr.head_sha && (
+                  <Tooltip text={`Latest commit: ${pr.head_sha}`} position="bottom">
+                    <a
+                      href={`${pr.html_url.replace(/\/pull\/\d+$/, '')}/commit/${pr.head_sha}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.sha}
+                    >{pr.head_sha.slice(0, 7)}</a>
+                  </Tooltip>
+                )}
+              </div>
+            )}
             <div className={styles.author}>
               {avatarMap.get(pr.author) ? (
                 <img

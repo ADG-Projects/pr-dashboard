@@ -257,6 +257,7 @@
 }
 
 .main {
+  grid-row: 3;
   overflow: auto;
   padding: 1.5rem;
 }

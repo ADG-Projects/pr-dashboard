@@ -1,11 +1,17 @@
 .panel {
+  position: fixed;
+  top: 50%;
+  right: 1rem;
+  transform: translateY(-50%);
   width: 380px;
-  min-width: 380px;
-  border-left: 1px solid var(--border-default);
+  max-height: calc(100vh - 2rem);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   background: var(--bg-surface);
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
+  z-index: 40;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
 }
 
 .header {

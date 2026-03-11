@@ -7,6 +7,7 @@ import { useCurrentUser } from '../App';
 import { PRDetailPanel } from '../components/PRDetailPanel';
 import { Tooltip } from '../components/Tooltip';
 import { useStore } from '../store/useStore';
+import { repoColor } from '../utils/repoColors';
 import styles from './PrioritizeView.module.css';
 
 function scoreColor(score: number): string {
@@ -284,6 +285,15 @@ export function PrioritizeView() {
     return map;
   }, [team]);
 
+  // Build repo color map keyed by repo id
+  const repoColorMap = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const r of repos || []) {
+      map.set(r.id, repoColor(r.full_name));
+    }
+    return map;
+  }, [repos]);
+
   const { data: items, isLoading } = useQuery({
     queryKey: ['prioritized', filterRepoId, currentUser ? mode : 'default'],
     queryFn: () => api.listPrioritized(filterRepoId, currentUser ? mode : undefined),
@@ -394,7 +404,7 @@ export function PrioritizeView() {
 
   return (
     <div className={styles.container}>
-      <div className={styles.content}>
+      <div className={styles.content} style={selectedPrNumber ? { marginRight: 396 } : undefined}>
         <div className={styles.header}>
           <h2 className={styles.title}>Priority Queue</h2>
           {summaryBar}
@@ -426,7 +436,14 @@ export function PrioritizeView() {
                 className={`${styles.filterTrigger} ${styles.repoTrigger}`}
                 onClick={() => setRepoDropdownOpen(!repoDropdownOpen)}
               >
-                <span>{filterRepoId ? (repos || []).find((r: RepoSummary) => r.id === filterRepoId)?.full_name ?? 'All repos' : 'All repos'}</span>
+                {filterRepoId ? (() => {
+                  const r = (repos || []).find((r: RepoSummary) => r.id === filterRepoId);
+                  const color = filterRepoId ? repoColorMap.get(filterRepoId) : undefined;
+                  return <>
+                    {color && <span className={styles.repoDot} style={{ backgroundColor: color }} />}
+                    <span>{r?.name ?? 'All repos'}</span>
+                  </>;
+                })() : <span>All repos</span>}
                 <span className={styles.filterChevron}>{repoDropdownOpen ? '\u25B4' : '\u25BE'}</span>
               </button>
               {repoDropdownOpen && (
@@ -451,6 +468,7 @@ export function PrioritizeView() {
                           className={`${styles.filterMenuItem} ${styles.filterMenuItemIndented} ${filterRepoId === r.id ? styles.filterMenuItemActive : ''}`}
                           onClick={() => { setFilterRepoId(r.id); setRepoDropdownOpen(false); }}
                         >
+                          <span className={styles.repoDot} style={{ backgroundColor: repoColorMap.get(r.id) }} />
                           <span>{r.name}</span>
                         </div>
                       ))}
@@ -467,7 +485,10 @@ export function PrioritizeView() {
         {prs.length === 0 ? (
           <div className={styles.empty}>{emptyMessage}</div>
         ) : (
-          <div className={styles.list}>
+          <div
+            className={`${styles.list} ${filterRepoId ? styles.listTinted : ''}`}
+            style={filterRepoId ? { background: `${repoColorMap.get(filterRepoId)}0d` } : undefined}
+          >
             {prs.map((item, idx) => {
               // Show tier separator when the tier changes
               const prevTier = idx > 0 ? prs[idx - 1].priority_tier : null;
@@ -488,7 +509,18 @@ export function PrioritizeView() {
 
                 <div className={styles.main}>
                   <div className={styles.prTitleRow}>
-                    <span className={styles.repoName}>{item.repo_full_name}</span>
+                    {!filterRepoId && (() => {
+                      const color = repoColorMap.get(item.repo_id);
+                      const name = item.repo_full_name.split('/').pop() || item.repo_full_name;
+                      return (
+                        <span
+                          className={styles.repoBadge}
+                          style={{ color, backgroundColor: color ? `${color}1a` : undefined }}
+                        >
+                          {name}
+                        </span>
+                      );
+                    })()}
                     <a
                       href={item.pr.html_url}
                       target="_blank"

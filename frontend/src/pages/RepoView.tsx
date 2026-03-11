@@ -9,6 +9,7 @@ import { DependencyGraph } from '../components/DependencyGraph';
 import { PRDetailPanel } from '../components/PRDetailPanel';
 import { Tooltip } from '../components/Tooltip';
 import { useStore } from '../store/useStore';
+import { repoColor } from '../utils/repoColors';
 import styles from './RepoView.module.css';
 
 export function RepoView() {
@@ -107,6 +108,16 @@ export function RepoView() {
     }
   }, [repos, repo, navigate]);
 
+  // Apply repo color tint to the Shell's .main scroll container
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const main = containerRef.current?.parentElement;
+    if (!main || !repo) return;
+    const color = `${repoColor(repo.full_name)}18`;
+    main.style.background = color;
+    return () => { main.style.background = ''; };
+  }, [repo]);
+
   const pullParams = stateFilter === 'merged' ? { include_merged_days: '7' } : undefined;
   const { data: pulls, isLoading } = useQuery({
     queryKey: ['pulls', repo?.id, stateFilter],
@@ -160,6 +171,7 @@ export function RepoView() {
       qc.invalidateQueries({ queryKey: ['stacks', repo?.id], refetchType: 'active' });
     },
   });
+
 
   // Hard filters: CI and state; author/reviewer dim cards
   let filtered = pulls || [];
@@ -246,8 +258,14 @@ export function RepoView() {
   if (!repo) return <div className={styles.loading}>Loading...</div>;
 
   return (
-    <div className={styles.container}>
-      <div className={styles.content}>
+    <div className={styles.container} ref={containerRef}>
+      <div className={styles.content} style={selectedPrNumber ? { marginRight: 396 } : undefined} onClick={(e) => {
+        if (!selectedPrNumber) return;
+        const target = e.target as HTMLElement;
+        if (target.closest('a, button, [role="button"]')) return;
+        if (target.closest('[data-pr-card]')) return;
+        selectPr(null);
+      }}>
         <div className={styles.titleRow}>
           <div className={styles.repoNav}>
             <div className={styles.filterDropdown} ref={repoDropdownRef}>
@@ -255,6 +273,7 @@ export function RepoView() {
                 className={`${styles.filterTrigger} ${styles.repoTrigger}`}
                 onClick={() => setRepoDropdownOpen(!repoDropdownOpen)}
               >
+                {repo && <span className={styles.repoDot} style={{ backgroundColor: repoColor(repo.full_name) }} />}
                 <span>{name}</span>
                 <span className={styles.filterChevron}>{repoDropdownOpen ? '\u25B4' : '\u25BE'}</span>
               </button>
@@ -275,8 +294,10 @@ export function RepoView() {
                           onClick={() => {
                             navigate(`/repos/${r.owner}/${r.name}`);
                             setRepoDropdownOpen(false);
+                            selectPr(null);
                           }}
                         >
+                          <span className={styles.repoDot} style={{ backgroundColor: repoColor(r.full_name) }} />
                           <span>{r.name}</span>
                         </div>
                       ))}
@@ -286,15 +307,6 @@ export function RepoView() {
               )}
             </div>
           </div>
-          <Tooltip text="Fetch latest data from GitHub (auto-syncs every 3 min)" position="bottom">
-            <button
-              onClick={() => syncMutation.mutate()}
-              disabled={syncMutation.isPending}
-              className={styles.syncBtn}
-            >
-              {syncMutation.isPending ? 'Syncing...' : 'Sync now'}
-            </button>
-          </Tooltip>
         </div>
 
         <div className={styles.filters}>

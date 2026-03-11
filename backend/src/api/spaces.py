@@ -134,6 +134,7 @@ async def list_available_repos(
 
     base_url = _base_url_for_space(space)
     gh = GitHubClient(token=token, base_url=base_url)
+    sso_required = False
     try:
         if space.space_type == "org":
             repos = await gh.list_org_repos(space.slug)
@@ -141,6 +142,19 @@ async def list_available_repos(
             repos = await gh.list_user_repos(space.slug)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code in (403, 404) and space.space_type == "org":
+            # Check if this is a SAML/SSO enforcement error
+            try:
+                error_body = exc.response.json()
+                if "SAML" in error_body.get("message", "") or "SSO" in error_body.get(
+                    "message", ""
+                ):
+                    sso_required = True
+                    logger.warning(
+                        f"Token for {space.slug} lacks SSO authorization (SAML enforcement)"
+                    )
+            except Exception:
+                pass
+
             logger.warning(
                 f"Cannot list org repos for {space.slug} ({exc.response.status_code}), "
                 f"falling back to /user/repos"
@@ -186,7 +200,7 @@ async def list_available_repos(
     available = [r for r in non_archived if r["full_name"] not in user_tracked]
     already_tracked_count = total_from_github - len(available)
 
-    return {
+    result = {
         "total_from_github": total_from_github,
         "already_tracked_count": already_tracked_count,
         "repos": [
@@ -200,6 +214,9 @@ async def list_available_repos(
             for r in available
         ],
     }
+    if sso_required:
+        result["sso_required"] = True
+    return result
 
 
 @router.post("/{space_id}/connectivity")

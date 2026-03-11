@@ -155,6 +155,7 @@ export interface AvailableReposResponse {
   total_from_github: number;
   already_tracked_count: number;
   repos: AvailableRepo[];
+  sso_required?: boolean;
 }
 
 export interface AuthStatus {

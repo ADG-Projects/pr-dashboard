@@ -126,7 +126,33 @@ function RepoBrowser({ space, onClose }: { space: Space; onClose: () => void }) 
               {search
                 ? 'No matching repos'
                 : response && response.total_from_github === 0
-                  ? 'No repos found. The token may lack access to this org.'
+                  ? (
+                    <div className={styles.emptyHelpBox}>
+                      <strong>No repos found</strong>
+                      {response.sso_required ? (
+                        <p>
+                          Your token needs SSO authorization for this org. Go to{' '}
+                          <a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer">
+                            GitHub → Settings → Tokens
+                          </a>
+                          , find your token, click <strong>Configure SSO</strong>, and authorize this org.
+                        </p>
+                      ) : (
+                        <ul>
+                          <li>If this is a SAML/SSO org, make sure your token has SSO authorization
+                            {' — '}go to{' '}
+                            <a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer">
+                              GitHub Tokens
+                            </a>
+                            {' → Configure SSO → Authorize'}
+                          </li>
+                          <li>If you regenerated your token, SSO authorization does not carry over.
+                            You need to re-authorize and update the token in the dashboard.</li>
+                          <li>Check that the token has the <code>repo</code> scope</li>
+                        </ul>
+                      )}
+                    </div>
+                  )
                   : 'All repos are already tracked'}
             </div>
           )}

@@ -480,6 +480,33 @@
   font-size: 0.85rem;
 }
 
+.emptyHelpBox {
+  text-align: left;
+  line-height: 1.5;
+}
+.emptyHelpBox strong {
+  display: block;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+.emptyHelpBox ul {
+  margin: 0.5rem 0 0 0;
+  padding-left: 1.25rem;
+}
+.emptyHelpBox li {
+  margin-bottom: 0.4rem;
+}
+.emptyHelpBox a {
+  color: var(--accent-blue);
+  text-decoration: underline;
+}
+.emptyHelpBox code {
+  background: var(--bg-elevated);
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+}
+
 .repoRow {
   display: flex;
   align-items: center;

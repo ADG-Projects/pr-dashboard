@@ -272,7 +272,7 @@ export function RepoView() {
     ci: <svg className={styles.filterIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm3.5 5.3l-4 4a.75.75 0 01-1.06 0l-2-2a.75.75 0 111.06-1.06L7 8.74l3.47-3.47a.75.75 0 011.06 1.06z"/></svg>,
     branch: <svg className={styles.filterIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6.5a2.5 2.5 0 01-2.5 2.5H8.5v2.128a2.251 2.251 0 11-1.5 0V4.872a2.251 2.251 0 111.5 0V5.5H10a1 1 0 001-1v-1.128A2.251 2.251 0 019.5 3.25zM4.25 3.5a.75.75 0 100 1.5.75.75 0 000-1.5zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5z" fill="none" stroke="currentColor" strokeWidth="1" /></svg>,
     priority: <svg className={styles.filterIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M3 14V2l5 4 5-4v12l-5-4-5 4z"/></svg>,
-    label: <svg className={styles.filterIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M2 7.5a1.5 1.5 0 011.5-1.5h3.586a1 1 0 01.707.293l5.414 5.414a1 1 0 010 1.414l-3.586 3.586a1 1 0 01-1.414 0L2.793 11.293A1 1 0 012.5 10.586V7.5z" fill="none" stroke="currentColor" strokeWidth="1.3"/><circle cx="5.5" cy="9.5" r="1"/></svg>,
+    label: <svg className={styles.filterIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.5A1.5 1.5 0 013.5 1h3.586a1 1 0 01.707.293l6.414 6.414a1 1 0 010 1.414l-3.586 3.586a1 1 0 01-1.414 0L2.793 6.293A1 1 0 012.5 5.586V2.5z" fill="none" stroke="currentColor" strokeWidth="1.3"/><circle cx="5.25" cy="4.25" r="1"/></svg>,
     stack: <svg className={styles.filterIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L1 5l7 4 7-4-7-4zM1 8l7 4 7-4M1 11l7 4 7-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,
   };
 

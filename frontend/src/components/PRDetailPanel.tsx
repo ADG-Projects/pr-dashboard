@@ -20,13 +20,18 @@ export function PRDetailPanel({ repoId, prNumber, onClose, showRepoLink = true }
   const qc = useQueryClient();
   const [addReviewerOpen, setAddReviewerOpen] = useState(false);
   const [reviewerSearch, setReviewerSearch] = useState('');
+  const [labelDropdownOpen, setLabelDropdownOpen] = useState(false);
   const addReviewerRef = useRef<HTMLDivElement>(null);
   const reviewerSearchRef = useRef<HTMLInputElement>(null);
+  const labelDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (addReviewerRef.current && !addReviewerRef.current.contains(e.target as Node)) {
         setAddReviewerOpen(false);
+      }
+      if (labelDropdownRef.current && !labelDropdownRef.current.contains(e.target as Node)) {
+        setLabelDropdownOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClick);
@@ -322,32 +327,69 @@ export function PRDetailPanel({ repoId, prNumber, onClose, showRepoLink = true }
             </div>
           </section>
 
-          {/* Labels */}
+          {/* Label */}
           <section className={styles.section}>
-            <h3>Labels</h3>
-            <div className={styles.labelChips}>
-              {ALLOWED_LABELS.map((lbl) => {
-                const isActive = pr.labels?.some((l) => l.name === lbl.name) ?? false;
-                return (
+            <h3>Label</h3>
+            {(() => {
+              const currentLabel = pr.labels?.find((l) => ALLOWED_LABELS.some((a) => a.name === l.name));
+              const labelIcons: Record<string, React.ReactNode> = {
+                bug: <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4.72 3.22a.75.75 0 011.06 1.06L4.56 5.5h6.88l-1.22-1.22a.75.75 0 011.06-1.06l2.5 2.5a.75.75 0 010 1.06l-2.5 2.5a.75.75 0 11-1.06-1.06L11.44 7H4.56l1.22 1.22a.75.75 0 11-1.06 1.06l-2.5-2.5a.75.75 0 010-1.06l2.5-2.5zM8 13.5A5.5 5.5 0 018 2.5a5.5 5.5 0 010 11z" fill="none" stroke="currentColor" strokeWidth="1.2"/></svg>,
+                enhancement: <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z"/></svg>,
+                documentation: <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3.5A1.5 1.5 0 013.5 2h9A1.5 1.5 0 0114 3.5v9a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12.5v-9zM5 5h6M5 8h6M5 11h3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>,
+                refactor: <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2 8a6 6 0 1012 0A6 6 0 002 8zm8.5-1.5L8 4 5.5 6.5M5.5 9.5L8 12l2.5-2.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+                testing: <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 2v4L3.5 13.5a1.5 1.5 0 001.5 1.5h6a1.5 1.5 0 001.5-1.5L10 6V2M4.5 2h7" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+              };
+              return (
+                <div className={styles.labelDropdown} ref={labelDropdownRef}>
                   <button
-                    key={lbl.name}
-                    className={`${styles.labelChip} ${isActive ? styles.labelChipActive : ''}`}
-                    style={isActive ? { backgroundColor: `#${lbl.color}`, borderColor: `#${lbl.color}` } : undefined}
-                    onClick={() => {
-                      if (isActive) {
-                        labelMutation.mutate({ add: [], remove: [lbl.name] });
-                      } else {
-                        labelMutation.mutate({ add: [lbl.name], remove: [] });
-                      }
-                    }}
+                    className={styles.labelTrigger}
+                    onClick={() => setLabelDropdownOpen(!labelDropdownOpen)}
                     disabled={labelMutation.isPending}
-                    title={lbl.description}
                   >
-                    {lbl.name}
+                    {currentLabel ? (
+                      <span className={styles.labelTriggerValue}>
+                        <span className={styles.labelDot} style={{ backgroundColor: `#${currentLabel.color}` }} />
+                        {labelIcons[currentLabel.name]}
+                        {currentLabel.name}
+                      </span>
+                    ) : (
+                      <span className={styles.labelTriggerPlaceholder}>None</span>
+                    )}
+                    <span className={styles.labelChevron}>{labelDropdownOpen ? '\u25B4' : '\u25BE'}</span>
                   </button>
-                );
-              })}
-            </div>
+                  {labelDropdownOpen && (
+                    <div className={styles.labelMenu}>
+                      <div
+                        className={`${styles.labelMenuItem} ${!currentLabel ? styles.labelMenuItemActive : ''}`}
+                        onClick={() => {
+                          if (currentLabel) labelMutation.mutate({ add: [], remove: [currentLabel.name] });
+                          setLabelDropdownOpen(false);
+                        }}
+                      >
+                        None
+                      </div>
+                      {ALLOWED_LABELS.map((lbl) => (
+                        <div
+                          key={lbl.name}
+                          className={`${styles.labelMenuItem} ${currentLabel?.name === lbl.name ? styles.labelMenuItemActive : ''}`}
+                          onClick={() => {
+                            const remove = currentLabel ? [currentLabel.name] : [];
+                            if (currentLabel?.name !== lbl.name) {
+                              labelMutation.mutate({ add: [lbl.name], remove });
+                            }
+                            setLabelDropdownOpen(false);
+                          }}
+                        >
+                          <span className={styles.labelDot} style={{ backgroundColor: `#${lbl.color}` }} />
+                          {labelIcons[lbl.name]}
+                          <span>{lbl.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </section>
 
           {/* Reviewers */}

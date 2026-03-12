@@ -177,7 +177,7 @@ export interface PriorityBreakdown {
   draft_penalty: number;
 }
 
-export type PriorityMode = 'review' | 'owner';
+export type PriorityMode = 'review' | 'owner' | 'all';
 
 export interface PrioritizedPR {
   pr: PRSummary;

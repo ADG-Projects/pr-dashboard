@@ -490,7 +490,7 @@ async def list_prioritized(
             ordered.append((tier_name, entry))
 
     # Convert to response with global merge_position
-    active_mode = mode if user_logins else "default"
+    active_mode = mode if (user_logins or mode == "all") else "default"
     result: list[PrioritizedPROut] = []
     for position, (tier_name, entry) in enumerate(ordered, start=1):
         pr = entry["pr"]

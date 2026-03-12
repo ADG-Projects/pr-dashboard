@@ -200,12 +200,10 @@ function ScoringGuide({ open, onToggle, mode }: { open: boolean; onToggle: () =>
 }
 
 export function PrioritizeView() {
-  const { selectedPrNumber, selectPr, selectedRepoId, setSelectedRepoId } = useStore();
+  const { selectedPrNumber, selectPr, selectedRepoId, setSelectedRepoId, prioritizeMode: mode, setPrioritizeMode: setMode, prioritizeRepoId: filterRepoId, setPrioritizeRepoId: setFilterRepoId } = useStore();
   const { user: currentUser } = useCurrentUser();
   const [hoveredId, setHoveredId] = useState<number | null>(null);
-  const [filterRepoId, setFilterRepoId] = useState<number | undefined>(undefined);
   const [guideOpen, setGuideOpen] = useState(false);
-  const [mode, setMode] = useState<PriorityMode>('review');
 
   // Dropdown open/close state
   const [repoDropdownOpen, setRepoDropdownOpen] = useState(false);
@@ -265,6 +263,7 @@ export function PrioritizeView() {
   // Determine active mode from response (handles unauth fallback)
   const activeMode: PriorityMode | null = items?.[0]?.mode === 'review' ? 'review'
     : items?.[0]?.mode === 'owner' ? 'owner'
+    : items?.[0]?.mode === 'all' ? 'all'
     : null;
 
   const prs = items || [];
@@ -362,6 +361,8 @@ export function PrioritizeView() {
     ? 'No PRs waiting for your review.'
     : activeMode === 'owner'
     ? "You don't have any open PRs."
+    : activeMode === 'all'
+    ? 'No open PRs found across your tracked repos.'
     : 'No open PRs found across your tracked repos.';
 
   return (
@@ -387,6 +388,12 @@ export function PrioritizeView() {
                 onClick={() => setMode('owner')}
               >
                 My PRs
+              </button>
+              <button
+                className={`${styles.modeButton} ${mode === 'all' ? styles.modeButtonActive : ''}`}
+                onClick={() => setMode('all')}
+              >
+                All PRs
               </button>
             </div>
           )}

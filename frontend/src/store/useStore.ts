@@ -68,6 +68,12 @@ interface AppState {
   lastReposSectionPath: string | null;
   setLastReposSectionPath: (path: string | null) => void;
 
+  /** Prioritize view sticky filters */
+  prioritizeMode: 'review' | 'owner' | 'all';
+  setPrioritizeMode: (mode: 'review' | 'owner' | 'all') => void;
+  prioritizeRepoId: number | undefined;
+  setPrioritizeRepoId: (id: number | undefined) => void;
+
   /** Sidebar collapsed */
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
@@ -125,6 +131,32 @@ export const useStore = create<AppState>((set) => ({
 
   lastReposSectionPath: null,
   setLastReposSectionPath: (path) => set({ lastReposSectionPath: path }),
+
+  prioritizeMode: (() => {
+    try {
+      const stored = localStorage.getItem('prioritizeMode');
+      if (stored === 'review' || stored === 'owner' || stored === 'all') return stored;
+    } catch {}
+    return 'review';
+  })(),
+  setPrioritizeMode: (mode) => set(() => {
+    try { localStorage.setItem('prioritizeMode', mode); } catch {}
+    return { prioritizeMode: mode };
+  }),
+  prioritizeRepoId: (() => {
+    try {
+      const stored = localStorage.getItem('prioritizeRepoId');
+      if (stored) return Number(stored);
+    } catch {}
+    return undefined;
+  })(),
+  setPrioritizeRepoId: (id) => set(() => {
+    try {
+      if (id !== undefined) localStorage.setItem('prioritizeRepoId', String(id));
+      else localStorage.removeItem('prioritizeRepoId');
+    } catch {}
+    return { prioritizeRepoId: id };
+  }),
 
   sidebarCollapsed: false,
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),

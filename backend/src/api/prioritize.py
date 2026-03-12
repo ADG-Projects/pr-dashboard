@@ -137,7 +137,6 @@ def compute_review_score(
     total_lines: int,
     mergeable_state: str | None,
     created_at: datetime,
-    draft: bool,
     head_sha: str | None,
     author_last_commented_at: datetime | None = None,
 ) -> tuple[int, PriorityBreakdown]:
@@ -159,10 +158,7 @@ def compute_review_score(
     merge_scores = {"clean": 10, "unstable": 5}
     mergeable_pts = merge_scores.get(mergeable_state or "", 0)
 
-    # Not a draft (max 5) — draft penalty
-    draft_penalty = -30 if draft else 0
-
-    total = max(0, ball_pts + ci_pts + size_pts + age_pts + mergeable_pts + draft_penalty)
+    total = max(0, ball_pts + ci_pts + size_pts + age_pts + mergeable_pts)
 
     breakdown = PriorityBreakdown(
         review=ball_pts,
@@ -171,102 +167,38 @@ def compute_review_score(
         mergeable=mergeable_pts,
         age=age_pts,
         rebase=0,
-        draft_penalty=draft_penalty,
+        draft_penalty=0,
     )
     return total, breakdown
 
 
-def compute_owner_score(
+def compute_quickest_win_score(
     review_state: str,
     ci_status: str,
     total_lines: int,
     mergeable_state: str | None,
     created_at: datetime,
-    draft: bool,
+    rebased_since_approval: bool = False,
     has_commenters_without_review: bool = False,
 ) -> tuple[int, PriorityBreakdown]:
-    """Scoring for owner mode (max 100): "What needs my attention on my PRs?"."""
-    # Changes requested (max 30) — someone sent it back
-    review_pts = 30 if review_state == "changes_requested" else 0
+    """Quickest-win scoring (max 100): PRs closest to being done rank highest.
 
-    # CI status inverted (max 25) — fix failures first
-    ci_scores = {"failure": 25, "action_required": 20, "pending": 5, "success": 0, "unknown": 5}
-    ci_pts = ci_scores.get(ci_status, 5)
-
-    # Conflicts inverted (max 15) — fix conflicts first
-    merge_scores = {"clean": 0, "unstable": 8}
-    mergeable_pts = merge_scores.get(mergeable_state or "", 15)  # unknown/conflicts = 15
-
-    # Ready to merge (max 15) — approved + CI passing + clean merge
-    ready_pts = 0
-    is_approved = review_state == "approved"
-    is_ci_green = ci_status == "success"
-    is_clean = mergeable_state == "clean"
-    if is_approved and is_ci_green and is_clean:
-        ready_pts = 15
-    elif is_approved and is_ci_green:
-        ready_pts = 10
-    elif is_approved:
-        ready_pts = 5
-
-    # Has new feedback (max 5) — reviewed/commented but not approved/changes_requested
-    feedback_pts = 5 if review_state == "reviewed" else 0
-
-    # Unsubmitted comments (bonus 5) — someone commented without a formal review
-    uncommented_pts = 5 if has_commenters_without_review else 0
-
-    # Age (max 10) — linear over 7 days
-    age_pts = _compute_age_pts(created_at, 10)
-
-    # Draft penalty (lighter than review mode)
-    draft_penalty = -20 if draft else 0
-
-    total = max(
-        0,
-        review_pts
-        + ci_pts
-        + mergeable_pts
-        + ready_pts
-        + feedback_pts
-        + age_pts
-        + uncommented_pts
-        + draft_penalty,
-    )
-
-    # Reuse PriorityBreakdown fields with owner semantics:
-    # review = changes_requested pts, ci = inverted ci, size = ready_to_merge,
-    # mergeable = conflicts inverted, rebase = feedback
-    breakdown = PriorityBreakdown(
-        review=review_pts,
-        ci=ci_pts,
-        size=ready_pts,
-        mergeable=mergeable_pts,
-        age=age_pts,
-        rebase=feedback_pts,
-        draft_penalty=draft_penalty,
-    )
-    return total, breakdown
-
-
-def compute_priority_score(
-    review_state: str,
-    ci_status: str,
-    total_lines: int,
-    mergeable_state: str | None,
-    created_at: datetime,
-    rebased_since_approval: bool,
-    draft: bool,
-) -> tuple[int, PriorityBreakdown]:
-    """Legacy scoring function (0-100) for unauthenticated users."""
-    # Review readiness (max 35)
+    Used for both owner mode and default/unauthenticated mode.
+    Rewards positive state (approved, CI passing, clean merge).
+    """
+    # Review state (max 35) — approved = closest to done
     review_scores = {"approved": 35, "reviewed": 15, "none": 15, "changes_requested": 0}
     review_pts = review_scores.get(review_state, 15)
 
-    # CI status (max 25)
+    # CI status (max 25) — passing = ready to ship
     ci_scores = {"success": 25, "pending": 10, "unknown": 5, "failure": 0}
     ci_pts = ci_scores.get(ci_status, 5)
 
-    # Size — inverse, smaller = higher (max 10)
+    # Mergeable (max 15) — clean merge = one click away
+    merge_scores = {"clean": 15, "unstable": 8}
+    mergeable_pts = merge_scores.get(mergeable_state or "", 0)
+
+    # Size (max 10) — smaller PRs are quicker wins
     if total_lines <= 50:
         size_pts = 10
     elif total_lines <= 200:
@@ -278,21 +210,21 @@ def compute_priority_score(
     else:
         size_pts = 0
 
-    # Mergeable state (max 15)
-    merge_scores = {"clean": 15, "unstable": 8}
-    mergeable_pts = merge_scores.get(mergeable_state or "", 0)
-
-    # Age — older PRs get higher priority, linear 0→10 over 7 days (max 10)
+    # Age (max 10) — linear over 7 days
     age_pts = _compute_age_pts(created_at, 10)
 
-    # Rebase status (max 5) — not rebased since approval = needs re-review
+    # Bonus signal (max 5) — context-dependent:
+    # owner mode uses feedback (reviewed state), default mode uses rebase status
+    feedback_pts = 5 if review_state == "reviewed" else 0
     rebase_pts = 5 if rebased_since_approval else 0
+    bonus_pts = max(feedback_pts, rebase_pts)
 
-    # Draft penalty
-    draft_penalty = -30 if draft else 0
+    # Unsubmitted comments (bonus 5) — someone commented without a formal review
+    uncommented_pts = 5 if has_commenters_without_review else 0
 
     total = max(
-        0, review_pts + ci_pts + size_pts + mergeable_pts + age_pts + rebase_pts + draft_penalty
+        0,
+        review_pts + ci_pts + mergeable_pts + size_pts + age_pts + bonus_pts + uncommented_pts,
     )
 
     breakdown = PriorityBreakdown(
@@ -301,8 +233,8 @@ def compute_priority_score(
         size=size_pts,
         mergeable=mergeable_pts,
         age=age_pts,
-        rebase=rebase_pts,
-        draft_penalty=draft_penalty,
+        rebase=bonus_pts,
+        draft_penalty=0,
     )
     return total, breakdown
 
@@ -366,8 +298,8 @@ def _build_merge_order(
         root_score = ordered[0]["score"] if ordered else 0
         stack_groups.append((root_score, ordered))
 
-    # Sort standalone by score desc
-    standalone.sort(key=lambda e: e["score"], reverse=True)
+    # Sort standalone by score desc, then by age (older first) as tiebreaker
+    standalone.sort(key=lambda e: (-e["score"], e["pr"].created_at))
 
     # Sort stack groups by root score desc
     stack_groups.sort(key=lambda g: g[0], reverse=True)
@@ -463,6 +395,9 @@ async def list_prioritized(
     if not prs:
         return []
 
+    # Filter out drafts — they're work-in-progress, not actionable
+    prs = [pr for pr in prs if not pr.draft]
+
     # Mode-based filtering (only when authenticated with logins)
     if user_logins:
         if mode == "review":
@@ -514,30 +449,18 @@ async def list_prioritized(
                 total_lines=total_lines,
                 mergeable_state=pr.mergeable_state,
                 created_at=pr.created_at,
-                draft=pr.draft,
                 head_sha=pr.head_sha,
                 author_last_commented_at=pr.author_last_commented_at,
             )
-        elif user_logins and mode == "owner":
-            score, breakdown = compute_owner_score(
-                review_state=review_state,
-                ci_status=ci_status,
-                total_lines=total_lines,
-                mergeable_state=pr.mergeable_state,
-                created_at=pr.created_at,
-                draft=pr.draft,
-                has_commenters_without_review=len(_commenters_without_review(pr)) > 0,
-            )
         else:
-            rebased = _rebased_since_approval(pr)
-            score, breakdown = compute_priority_score(
+            score, breakdown = compute_quickest_win_score(
                 review_state=review_state,
                 ci_status=ci_status,
                 total_lines=total_lines,
                 mergeable_state=pr.mergeable_state,
                 created_at=pr.created_at,
-                rebased_since_approval=rebased,
-                draft=pr.draft,
+                rebased_since_approval=_rebased_since_approval(pr),
+                has_commenters_without_review=len(_commenters_without_review(pr)) > 0,
             )
 
         scored.append(

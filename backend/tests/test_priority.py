@@ -10,7 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.api.auth import _sign
-from src.api.prioritize import _build_merge_order, compute_priority_score
+from src.api.prioritize import _build_merge_order, compute_quickest_win_score
 from src.config.settings import settings
 from src.db.engine import get_session
 from src.main import app
@@ -321,10 +321,12 @@ async def test_prioritized_queue_includes_priority_tier(authed_client, setup):
 class TestBuildMergeOrder:
     def test_standalone_prs_sorted_by_score(self):
         """Standalone PRs (no stacks) are sorted by score descending."""
+        now = datetime.now(UTC)
         scored = [
             {
                 "pr_id": 1,
                 "score": 50,
+                "pr": type("PR", (), {"created_at": now - timedelta(days=3)})(),
                 "stack_id": None,
                 "stack_name": None,
                 "blocked_by_pr_id": None,
@@ -332,6 +334,7 @@ class TestBuildMergeOrder:
             {
                 "pr_id": 2,
                 "score": 80,
+                "pr": type("PR", (), {"created_at": now - timedelta(days=2)})(),
                 "stack_id": None,
                 "stack_name": None,
                 "blocked_by_pr_id": None,
@@ -339,6 +342,7 @@ class TestBuildMergeOrder:
             {
                 "pr_id": 3,
                 "score": 30,
+                "pr": type("PR", (), {"created_at": now - timedelta(days=1)})(),
                 "stack_id": None,
                 "stack_name": None,
                 "blocked_by_pr_id": None,
@@ -491,20 +495,19 @@ async def test_sync_updates_priority_on_existing_pr(db_session: AsyncSession):
     assert pr.manual_priority is None
 
 
-# ── compute_priority_score unit test ──────────────────
+# ── compute_quickest_win_score unit test ──────────────────
 
 
-class TestComputePriorityScore:
+class TestComputeQuickestWinScore:
     def test_perfect_score(self):
         """Approved + CI pass + small + clean + old + rebased = max score."""
-        score, breakdown = compute_priority_score(
+        score, breakdown = compute_quickest_win_score(
             review_state="approved",
             ci_status="success",
             total_lines=10,
             mergeable_state="clean",
             created_at=datetime.now(UTC) - timedelta(days=14),
             rebased_since_approval=True,
-            draft=False,
         )
         assert score == 100
         assert breakdown.review == 35
@@ -514,30 +517,29 @@ class TestComputePriorityScore:
         assert breakdown.age == 10
         assert breakdown.rebase == 5
 
-    def test_draft_penalty(self):
-        """Draft PRs get a -30 penalty, floored at 0."""
-        score, breakdown = compute_priority_score(
-            review_state="none",
-            ci_status="unknown",
-            total_lines=10,
+    def test_worst_score(self):
+        """Changes requested + CI failing + conflicts + huge + new = near zero."""
+        score, breakdown = compute_quickest_win_score(
+            review_state="changes_requested",
+            ci_status="failure",
+            total_lines=2000,
             mergeable_state=None,
             created_at=datetime.now(UTC),
-            rebased_since_approval=False,
-            draft=True,
         )
-        assert breakdown.draft_penalty == -30
-        assert score == 0  # 15 + 5 + 10 + 0 + 0 + 0 - 30 = 0
+        assert score == 0
+        assert breakdown.review == 0
+        assert breakdown.ci == 0
+        assert breakdown.size == 0
+        assert breakdown.mergeable == 0
 
     def test_large_pr_low_size_score(self):
         """Very large PRs get 0 size points."""
-        _, breakdown = compute_priority_score(
+        _, breakdown = compute_quickest_win_score(
             review_state="none",
             ci_status="unknown",
             total_lines=2000,
             mergeable_state=None,
             created_at=datetime.now(UTC),
-            rebased_since_approval=False,
-            draft=False,
         )
         assert breakdown.size == 0
 

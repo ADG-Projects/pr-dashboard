@@ -105,10 +105,7 @@ function standalonePriorityScore(pr: PRSummary): number {
   // Rebase check (max 5)
   const rebasePts = pr.rebased_since_approval ? 5 : 0;
 
-  // Draft penalty
-  const draftPenalty = pr.draft ? -30 : 0;
-
-  return Math.max(0, reviewPts + ciPts + sizePts + mergeablePts + agePts + rebasePts + draftPenalty);
+  return Math.max(0, reviewPts + ciPts + sizePts + mergeablePts + agePts + rebasePts);
 }
 
 export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogin, dimAuthor, dimBranchTarget, dimLabel, selectedPrNumber, onSelectPr, onRenameStack, nameMap, collapsedStacks, onToggleStackCollapsed }: Props) {

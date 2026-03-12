@@ -27,11 +27,6 @@ function BreakdownTooltip({ breakdown, score, mode }: { breakdown: PriorityBreak
         <div className={styles.breakdownRow}><span>Small diff</span><span>{breakdown.size}/15</span></div>
         <div className={styles.breakdownRow}><span>Age</span><span>{breakdown.age}/15</span></div>
         <div className={styles.breakdownRow}><span>Mergeable</span><span>{breakdown.mergeable}/10</span></div>
-        {breakdown.draft_penalty < 0 && (
-          <div className={`${styles.breakdownRow} ${styles.breakdownPenalty}`}>
-            <span>Draft penalty</span><span>{breakdown.draft_penalty}</span>
-          </div>
-        )}
       </div>
     );
   }
@@ -39,35 +34,25 @@ function BreakdownTooltip({ breakdown, score, mode }: { breakdown: PriorityBreak
     return (
       <div className={styles.breakdownTooltip}>
         <div className={styles.breakdownTitle}>Score breakdown ({score}/100)</div>
-        <div className={styles.breakdownRow}><span>Changes requested</span><span>{breakdown.review}/30</span></div>
-        <div className={styles.breakdownRow}><span>CI needs fix</span><span>{breakdown.ci}/25</span></div>
-        <div className={styles.breakdownRow}><span>Has conflicts</span><span>{breakdown.mergeable}/15</span></div>
-        <div className={styles.breakdownRow}><span>Ready to merge</span><span>{breakdown.size}/15</span></div>
+        <div className={styles.breakdownRow}><span>Approved</span><span>{breakdown.review}/35</span></div>
+        <div className={styles.breakdownRow}><span>CI passing</span><span>{breakdown.ci}/25</span></div>
+        <div className={styles.breakdownRow}><span>Clean merge</span><span>{breakdown.mergeable}/15</span></div>
+        <div className={styles.breakdownRow}><span>Small diff</span><span>{breakdown.size}/10</span></div>
         <div className={styles.breakdownRow}><span>Age</span><span>{breakdown.age}/10</span></div>
         <div className={styles.breakdownRow}><span>New feedback</span><span>{breakdown.rebase}/5</span></div>
-        {breakdown.draft_penalty < 0 && (
-          <div className={`${styles.breakdownRow} ${styles.breakdownPenalty}`}>
-            <span>Draft penalty</span><span>{breakdown.draft_penalty}</span>
-          </div>
-        )}
       </div>
     );
   }
-  // Default/legacy mode
+  // Default mode (same scoring as owner)
   return (
     <div className={styles.breakdownTooltip}>
       <div className={styles.breakdownTitle}>Score breakdown ({score}/100)</div>
-      <div className={styles.breakdownRow}><span>Review readiness</span><span>{breakdown.review}/35</span></div>
-      <div className={styles.breakdownRow}><span>CI status</span><span>{breakdown.ci}/25</span></div>
-      <div className={styles.breakdownRow}><span>Mergeable</span><span>{breakdown.mergeable}/15</span></div>
-      <div className={styles.breakdownRow}><span>Size (inverse)</span><span>{breakdown.size}/10</span></div>
+      <div className={styles.breakdownRow}><span>Approved</span><span>{breakdown.review}/35</span></div>
+      <div className={styles.breakdownRow}><span>CI passing</span><span>{breakdown.ci}/25</span></div>
+      <div className={styles.breakdownRow}><span>Clean merge</span><span>{breakdown.mergeable}/15</span></div>
+      <div className={styles.breakdownRow}><span>Small diff</span><span>{breakdown.size}/10</span></div>
       <div className={styles.breakdownRow}><span>Age</span><span>{breakdown.age}/10</span></div>
-      <div className={styles.breakdownRow}><span>Rebase check</span><span>{breakdown.rebase}/5</span></div>
-      {breakdown.draft_penalty < 0 && (
-        <div className={`${styles.breakdownRow} ${styles.breakdownPenalty}`}>
-          <span>Draft penalty</span><span>{breakdown.draft_penalty}</span>
-        </div>
-      )}
+      <div className={styles.breakdownRow}><span>Bonus</span><span>{breakdown.rebase}/5</span></div>
     </div>
   );
 }
@@ -100,9 +85,6 @@ function scoreSummaryReview(b: PriorityBreakdown): ScoredPhrase[] {
   // Age (max 15)
   if (b.age >= 10) phrases.push({ text: 'Getting stale', tip: 'Open for a while, aging PRs risk merge conflicts', impact: 'neutral', priority: 3 });
 
-  // Draft
-  if (b.draft_penalty < 0) phrases.push({ text: 'Draft', tip: 'Draft PR, not ready for review', impact: 'negative', priority: 10 });
-
   const order: Record<ScoreImpact, number> = { positive: 0, neutral: 1, negative: 2 };
   phrases.sort((a, b) => order[a.impact] - order[b.impact] || b.priority - a.priority);
   return phrases.slice(0, 4);
@@ -111,58 +93,40 @@ function scoreSummaryReview(b: PriorityBreakdown): ScoredPhrase[] {
 function scoreSummaryOwner(b: PriorityBreakdown): ScoredPhrase[] {
   const phrases: ScoredPhrase[] = [];
 
-  // Changes requested (review field, max 30)
-  if (b.review === 30) phrases.push({ text: 'Changes requested', tip: 'A reviewer requested changes, address their feedback', impact: 'negative', priority: 9 });
+  // Review state (review field, max 35) — approved = quickest win
+  if (b.review === 35) phrases.push({ text: 'Approved', tip: 'All reviewers approved, ready to ship', impact: 'positive', priority: 9 });
+  else if (b.review === 15) phrases.push({ text: 'Awaiting review', tip: 'No approval yet, waiting on reviewers', impact: 'neutral', priority: 4 });
+  else if (b.review === 0) phrases.push({ text: 'Changes requested', tip: 'A reviewer requested changes, address their feedback', impact: 'negative', priority: 7 });
 
-  // CI needs fix (ci field, max 25) - inverted: high score = failure
-  if (b.ci >= 20) phrases.push({ text: 'CI broken', tip: 'CI is failing, fix it before it can be merged', impact: 'negative', priority: 8 });
-  else if (b.ci === 5) phrases.push({ text: 'CI pending', tip: 'CI checks still running', impact: 'neutral', priority: 4 });
-  else if (b.ci === 0) phrases.push({ text: 'CI passing', tip: 'All checks passing', impact: 'positive', priority: 2 });
+  // CI status (ci field, max 25) — passing = ready
+  if (b.ci === 25) phrases.push({ text: 'CI passing', tip: 'All checks passing', impact: 'positive', priority: 8 });
+  else if (b.ci === 10) phrases.push({ text: 'CI pending', tip: 'CI checks still running', impact: 'neutral', priority: 4 });
+  else if (b.ci === 0) phrases.push({ text: 'CI failing', tip: 'CI is failing, must be fixed before merge', impact: 'negative', priority: 6 });
 
-  // Conflicts (mergeable field, max 15) - inverted: high score = conflicts
-  if (b.mergeable === 15) phrases.push({ text: 'Has conflicts', tip: 'Merge conflicts, needs rebase', impact: 'negative', priority: 7 });
+  // Mergeable (mergeable field, max 15) — clean = ready
+  if (b.mergeable === 15) phrases.push({ text: 'Clean merge', tip: 'No conflicts, can merge cleanly', impact: 'positive', priority: 7 });
+  else if (b.mergeable === 0) phrases.push({ text: 'Has conflicts', tip: 'Merge conflicts, needs rebase', impact: 'negative', priority: 5 });
 
-  // Ready to merge (size field, max 15)
-  if (b.size === 15) phrases.push({ text: 'Ready to merge!', tip: 'Approved, CI passing, clean merge - ship it!', impact: 'positive', priority: 10 });
-  else if (b.size >= 5) phrases.push({ text: 'Nearly ready', tip: 'Approved but missing CI or clean merge', impact: 'neutral', priority: 5 });
+  // Ready to merge composite check
+  if (b.review === 35 && b.ci === 25 && b.mergeable === 15) {
+    phrases.push({ text: 'Ready to merge!', tip: 'Approved, CI passing, clean merge, ship it!', impact: 'positive', priority: 10 });
+  }
+
+  // Size (size field, max 10) — small = quick
+  if (b.size >= 8) phrases.push({ text: 'Small diff', tip: 'Small change, quick to merge', impact: 'positive', priority: 2 });
+  else if (b.size === 0) phrases.push({ text: 'Very large diff', tip: 'Over 1000 lines changed', impact: 'negative', priority: 3 });
 
   // New feedback (rebase field, max 5)
   if (b.rebase === 5) phrases.push({ text: 'New feedback', tip: 'Someone left review comments', impact: 'neutral', priority: 6 });
-
-  // Draft
-  if (b.draft_penalty < 0) phrases.push({ text: 'Draft', tip: 'Draft PR, not yet published', impact: 'negative', priority: 10 });
 
   const order: Record<ScoreImpact, number> = { positive: 0, neutral: 1, negative: 2 };
   phrases.sort((a, b) => order[a.impact] - order[b.impact] || b.priority - a.priority);
   return phrases.slice(0, 4);
 }
 
-function scoreSummaryDefault(b: PriorityBreakdown, reviewState: string): ScoredPhrase[] {
-  const phrases: ScoredPhrase[] = [];
-
-  if (b.review === 35) phrases.push({ text: 'Approved', tip: 'Review approved, ready to merge', impact: 'positive', priority: 6 });
-  else if (reviewState === 'reviewed') phrases.push({ text: 'Reviewed', tip: 'Has review comments but not yet approved', impact: 'neutral', priority: 4 });
-  else if (reviewState === 'none') phrases.push({ text: 'Awaiting review', tip: 'No reviews yet, needs someone to look at it', impact: 'negative', priority: 6 });
-  else if (b.review === 0) phrases.push({ text: 'Changes requested', tip: 'Reviewer requested changes, must be addressed before merge', impact: 'negative', priority: 9 });
-
-  if (b.ci === 25) phrases.push({ text: 'CI passing', tip: 'All checks passing, safe to merge', impact: 'positive', priority: 3 });
-  else if (b.ci === 10) phrases.push({ text: 'CI pending', tip: 'Checks still running, wait for results', impact: 'neutral', priority: 5 });
-  else if (b.ci === 0) phrases.push({ text: 'CI failing', tip: 'Checks are failing, must be fixed before merge', impact: 'negative', priority: 8 });
-
-  if (b.size === 10) phrases.push({ text: 'Small diff', tip: 'Small change, easy to review', impact: 'positive', priority: 1 });
-  else if (b.size === 0) phrases.push({ text: 'Very large diff', tip: 'Over 1000 lines changed, hard to review, consider splitting', impact: 'negative', priority: 5 });
-  else if (b.size === 2) phrases.push({ text: 'Large diff', tip: '500-1000 lines changed, may be hard to review', impact: 'negative', priority: 4 });
-
-  if (b.mergeable === 15) phrases.push({ text: 'Clean merge', tip: 'No conflicts, can merge cleanly', impact: 'positive', priority: 2 });
-  else if (b.mergeable === 0) phrases.push({ text: 'Has conflicts', tip: 'Merge conflicts detected, needs rebase', impact: 'negative', priority: 7 });
-
-  if (b.age >= 8) phrases.push({ text: 'Getting stale', tip: 'Open for over a week, aging PRs risk merge conflicts', impact: 'neutral', priority: 3 });
-  if (b.rebase === 5) phrases.push({ text: 'Freshly rebased', tip: 'Rebased since last approval, up to date with base branch', impact: 'positive', priority: 1 });
-  if (b.draft_penalty < 0) phrases.push({ text: 'Draft', tip: 'Draft PR, not ready for review, large score penalty', impact: 'negative', priority: 10 });
-
-  const order: Record<ScoreImpact, number> = { positive: 0, neutral: 1, negative: 2 };
-  phrases.sort((a, b) => order[a.impact] - order[b.impact] || b.priority - a.priority);
-  return phrases.slice(0, 4);
+function scoreSummaryDefault(b: PriorityBreakdown, _reviewState: string): ScoredPhrase[] {
+  // Default mode uses the same quickest-win scoring as owner mode
+  return scoreSummaryOwner(b);
 }
 
 function getScoreSummary(b: PriorityBreakdown, reviewState: string, mode: PriorityMode | null): ScoredPhrase[] {
@@ -190,41 +154,38 @@ function ScoringGuide({ open, onToggle, mode }: { open: boolean; onToggle: () =>
                   <tr><td>Small diff</td><td>15</td><td>Smaller PRs score higher, quick wins first</td></tr>
                   <tr><td>Age</td><td>15</td><td>Older PRs rise in priority (linear over 7 days)</td></tr>
                   <tr><td>Mergeable</td><td>10</td><td>Clean (10), unstable (5), conflicts (0)</td></tr>
-                  <tr><td>Draft</td><td>-30</td><td>Penalty for draft PRs</td></tr>
                 </tbody>
               </table>
               <p>PRs where you have never reviewed rank highest. Once you review and the author hasn&apos;t pushed new changes, the PR drops to 0 on that signal (ball is in their court).</p>
             </>
           ) : mode === 'owner' ? (
             <>
-              <p>Each PR is scored 0-100 based on how urgently it needs your attention:</p>
+              <p>Each PR is scored 0-100 based on what&apos;s the quickest win:</p>
               <table className={styles.guideTable}>
                 <thead><tr><th>Signal</th><th>Max</th><th>Logic</th></tr></thead>
                 <tbody>
-                  <tr><td>Changes requested</td><td>30</td><td>Reviewer sent it back (30), no changes requested (0)</td></tr>
-                  <tr><td>CI needs fix</td><td>25</td><td>Failing (25), action required (20), pending (5), passing (0)</td></tr>
-                  <tr><td>Has conflicts</td><td>15</td><td>Conflicts (15), unstable (8), clean (0)</td></tr>
-                  <tr><td>Ready to merge</td><td>15</td><td>Approved + CI + clean (15), approved + CI (10), approved (5)</td></tr>
+                  <tr><td>Approved</td><td>35</td><td>Approved (35), reviewed/none (15), changes requested (0)</td></tr>
+                  <tr><td>CI passing</td><td>25</td><td>Passing (25), pending (10), unknown (5), failing (0)</td></tr>
+                  <tr><td>Clean merge</td><td>15</td><td>Clean (15), unstable (8), conflicts (0)</td></tr>
+                  <tr><td>Small diff</td><td>10</td><td>Smaller PRs score higher, quick wins first</td></tr>
                   <tr><td>Age</td><td>10</td><td>Older PRs rise in priority (linear over 7 days)</td></tr>
                   <tr><td>New feedback</td><td>5</td><td>Has review comments (5), none (0)</td></tr>
-                  <tr><td>Draft</td><td>-20</td><td>Lighter penalty for draft PRs</td></tr>
                 </tbody>
               </table>
-              <p>PRs with failing CI or requested changes rank highest since those need your action. PRs that are ready to merge also score well so you don&apos;t forget to ship them.</p>
+              <p>PRs closest to being done rank highest. A ready-to-merge PR (approved + CI passing + clean merge) scores ~85+, while a PR with failing CI and conflicts scores ~20. Draft PRs are excluded entirely.</p>
             </>
           ) : (
             <>
-              <p>Each PR is scored 0-100 based on how ready it is to review and merge:</p>
+              <p>Each PR is scored 0-100 based on what&apos;s the quickest win:</p>
               <table className={styles.guideTable}>
                 <thead><tr><th>Signal</th><th>Max</th><th>Logic</th></tr></thead>
                 <tbody>
-                  <tr><td>Review readiness</td><td>35</td><td>Approved (35), reviewed (15), no review (15), changes requested (0)</td></tr>
-                  <tr><td>CI status</td><td>25</td><td>Passing (25), pending (10), unknown (5), failing (0)</td></tr>
-                  <tr><td>Mergeable</td><td>15</td><td>Clean (15), unstable (8), conflicts/blocked (0)</td></tr>
-                  <tr><td>Diff size</td><td>10</td><td>Smaller PRs score higher</td></tr>
+                  <tr><td>Approved</td><td>35</td><td>Approved (35), reviewed/none (15), changes requested (0)</td></tr>
+                  <tr><td>CI passing</td><td>25</td><td>Passing (25), pending (10), unknown (5), failing (0)</td></tr>
+                  <tr><td>Clean merge</td><td>15</td><td>Clean (15), unstable (8), conflicts (0)</td></tr>
+                  <tr><td>Small diff</td><td>10</td><td>Smaller PRs score higher, quick wins first</td></tr>
                   <tr><td>Age</td><td>10</td><td>Older PRs rise in priority (linear over 7 days)</td></tr>
-                  <tr><td>Rebase check</td><td>5</td><td>+5 if rebased since last approval</td></tr>
-                  <tr><td>Draft</td><td>-30</td><td>Penalty for draft PRs</td></tr>
+                  <tr><td>Bonus</td><td>5</td><td>+5 if rebased since approval or has new feedback</td></tr>
                 </tbody>
               </table>
             </>
@@ -336,8 +297,8 @@ export function PrioritizeView() {
       );
     }
     if (activeMode === 'owner') {
-      const readyToMerge = prs.filter((p) => p.priority_breakdown.size === 15).length;
-      const needAction = prs.filter((p) => p.priority_breakdown.review === 30 || p.priority_breakdown.ci >= 20 || p.priority_breakdown.mergeable === 15).length;
+      const readyToMerge = prs.filter((p) => p.priority_breakdown.review === 35 && p.priority_breakdown.ci === 25 && p.priority_breakdown.mergeable === 15).length;
+      const needAction = prs.filter((p) => p.priority_breakdown.review === 0 || p.priority_breakdown.ci === 0 || p.priority_breakdown.mergeable === 0).length;
       const unsubmittedComments = prs.filter((p) => p.pr.commenters_without_review?.length > 0).length;
       return (
         <div className={styles.summaryBar}>
@@ -352,7 +313,7 @@ export function PrioritizeView() {
             </span>
           </Tooltip>
           {needAction > 0 && (
-            <Tooltip text="Changes requested, CI broken, or has merge conflicts" position="bottom">
+            <Tooltip text="Changes requested, CI failing, or has merge conflicts" position="bottom">
               <span className={`${styles.summaryItem} ${styles.summaryRed}`}>
                 <span className={styles.summaryCount}>{needAction}</span> need action
               </span>

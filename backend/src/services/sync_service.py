@@ -24,6 +24,14 @@ from src.services.events import broadcast_event
 from src.services.github_client import GitHubAuthError, GitHubClient, parse_gh_datetime
 from src.services.stack_detector import detect_stacks
 
+ALLOWED_LABELS: dict[str, dict[str, str]] = {
+    "bug": {"color": "d73a4a", "description": "Something isn't working"},
+    "enhancement": {"color": "0075ca", "description": "New feature or request"},
+    "documentation": {"color": "0e8a16", "description": "Documentation changes"},
+    "refactor": {"color": "7057ff", "description": "Code restructuring"},
+    "testing": {"color": "fbca04", "description": "Test-related changes"},
+}
+
 
 class SyncService:
     """Periodically syncs GitHub PR data into the local database."""
@@ -363,6 +371,13 @@ class SyncService:
         else:
             manual_priority = None
 
+        # Filter GitHub labels to the allowed set
+        synced_labels = [
+            {"name": lbl["name"], "color": ALLOWED_LABELS[lbl["name"]]["color"]}
+            for lbl in (gh_pr.get("labels") or [])
+            if lbl["name"] in ALLOWED_LABELS
+        ]
+
         if pr is None:
             pr = PullRequest(
                 repo_id=repo_id,
@@ -385,6 +400,7 @@ class SyncService:
                 github_requested_reviewers=new_reviewers,
                 assignee_id=assignee_id,
                 manual_priority=manual_priority,
+                labels=synced_labels,
             )
             session.add(pr)
             await session.flush()
@@ -401,6 +417,7 @@ class SyncService:
             pr.github_requested_reviewers = new_reviewers
             pr.assignee_id = assignee_id
             pr.manual_priority = manual_priority
+            pr.labels = synced_labels
 
         return pr
 

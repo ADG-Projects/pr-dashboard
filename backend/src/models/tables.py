@@ -173,6 +173,9 @@ class PullRequest(Base):
         JSON().with_variant(JSONB, "postgresql"), default=list
     )
     manual_priority: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    labels: Mapped[list | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), default=list
+    )
     author_last_commented_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

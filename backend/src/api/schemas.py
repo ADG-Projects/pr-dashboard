@@ -137,6 +137,7 @@ class PRSummary(BaseModel):
     rebased_since_approval: bool = False
     merged_at: datetime | None = None
     manual_priority: str | None = None
+    labels: list[dict] = []
     commenters_without_review: list[str] = []
 
 
@@ -228,6 +229,11 @@ class AssigneeUpdate(BaseModel):
 class ReviewerUpdate(BaseModel):
     add_user_ids: list[int] = []
     remove_logins: list[str] = []
+
+
+class LabelUpdate(BaseModel):
+    add: list[str] = []
+    remove: list[str] = []
 
 
 # ── Auth ─────────────────────────────────────────────────────

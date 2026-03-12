@@ -97,6 +97,7 @@ export interface PRSummary {
   rebased_since_approval: boolean;
   merged_at: string | null;
   manual_priority: string | null;
+  labels: { name: string; color: string }[];
   commenters_without_review: string[];
 }
 
@@ -191,6 +192,14 @@ export interface PrioritizedPR {
   priority_tier: string;
   mode: string;
 }
+
+export const ALLOWED_LABELS = [
+  { name: 'bug', color: 'd73a4a', description: "Something isn't working" },
+  { name: 'enhancement', color: '0075ca', description: 'New feature or request' },
+  { name: 'documentation', color: '0e8a16', description: 'Documentation changes' },
+  { name: 'refactor', color: '7057ff', description: 'Code restructuring' },
+  { name: 'testing', color: 'fbca04', description: 'Test-related changes' },
+] as const;
 
 // ── API functions ────────────────────────────────
 
@@ -315,6 +324,13 @@ export const api = {
         body: JSON.stringify({ add_user_ids: addUserIds, remove_logins: removeLogins }),
       },
     ),
+
+  // Labels
+  updateLabels: (repoId: number, number: number, add: string[], remove: string[]) =>
+    request<PRSummary>(`/api/repos/${repoId}/pulls/${number}/labels`, {
+      method: 'PATCH',
+      body: JSON.stringify({ add, remove }),
+    }),
 
   // Auth
   login: (password: string) =>

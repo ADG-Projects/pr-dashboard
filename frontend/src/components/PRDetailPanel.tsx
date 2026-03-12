@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type PRDetail, type User, type Space } from '../api/client';
+import { api, ALLOWED_LABELS, type PRDetail, type User, type Space } from '../api/client';
 import { StatusDot } from './StatusDot';
 import { Tooltip } from './Tooltip';
 import styles from './PRDetailPanel.module.css';
@@ -123,6 +123,12 @@ export function PRDetailPanel({ repoId, prNumber, onClose, showRepoLink = true }
       invalidatePr();
       qc.invalidateQueries({ queryKey: ['prioritized'], refetchType: 'active' });
     },
+  });
+
+  const labelMutation = useMutation({
+    mutationFn: ({ add, remove }: { add: string[]; remove: string[] }) =>
+      api.updateLabels(repoId, prNumber, add, remove),
+    onSuccess: invalidatePr,
   });
 
   // Friendly display names for known bots
@@ -310,6 +316,34 @@ export function PRDetailPanel({ repoId, prNumber, onClose, showRepoLink = true }
                     disabled={priorityMutation.isPending}
                   >
                     {val === 'high' && '\u2191 '}{val === 'low' && '\u2193 '}{label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Labels */}
+          <section className={styles.section}>
+            <h3>Labels</h3>
+            <div className={styles.labelChips}>
+              {ALLOWED_LABELS.map((lbl) => {
+                const isActive = pr.labels?.some((l) => l.name === lbl.name) ?? false;
+                return (
+                  <button
+                    key={lbl.name}
+                    className={`${styles.labelChip} ${isActive ? styles.labelChipActive : ''}`}
+                    style={isActive ? { backgroundColor: `#${lbl.color}`, borderColor: `#${lbl.color}` } : undefined}
+                    onClick={() => {
+                      if (isActive) {
+                        labelMutation.mutate({ add: [], remove: [lbl.name] });
+                      } else {
+                        labelMutation.mutate({ add: [lbl.name], remove: [] });
+                      }
+                    }}
+                    disabled={labelMutation.isPending}
+                    title={lbl.description}
+                  >
+                    {lbl.name}
                   </button>
                 );
               })}

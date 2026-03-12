@@ -399,6 +399,38 @@
   font-style: italic;
 }
 
+/* Label chips */
+.labelChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.labelChip {
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--bg-input);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.labelChip:hover {
+  border-color: var(--accent-blue);
+  color: var(--text-primary);
+}
+.labelChip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.labelChipActive {
+  color: #fff;
+  font-weight: 600;
+}
+
 /* Priority toggle */
 .priorityToggle {
   display: flex;

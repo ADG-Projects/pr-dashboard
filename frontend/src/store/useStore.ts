@@ -9,6 +9,7 @@ export interface RepoFilters {
   ciFilter: string;
   branchFilter: string;
   priorityFilter: string;
+  labelFilter: string;
   stackFilter: number | null;
   collapsedStacks: Set<number>;
 }
@@ -20,6 +21,7 @@ export const DEFAULT_REPO_FILTERS: RepoFilters = {
   ciFilter: '',
   branchFilter: '',
   priorityFilter: '',
+  labelFilter: '',
   stackFilter: null,
   collapsedStacks: new Set(),
 };

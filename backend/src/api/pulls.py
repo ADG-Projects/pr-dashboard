@@ -11,6 +11,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from src.api.schemas import (
     AssigneeUpdate,
     CheckRunOut,
+    LabelUpdate,
     PRDetail,
     PriorityUpdate,
     PRSummary,
@@ -32,6 +33,7 @@ from src.models.tables import (
 from src.services.crypto import decrypt_token
 from src.services.events import broadcast_event
 from src.services.github_client import GitHubClient
+from src.services.sync_service import ALLOWED_LABELS
 
 router = APIRouter(prefix="/api/repos/{repo_id}", tags=["pulls"])
 
@@ -218,6 +220,7 @@ def _pr_to_summary(pr: PullRequest, stack_id: int | None = None) -> PRSummary:
         rebased_since_approval=_rebased_since_approval(pr),
         merged_at=pr.merged_at,
         manual_priority=pr.manual_priority,
+        labels=pr.labels or [],
         commenters_without_review=_commenters_without_review(pr),
     )
 
@@ -331,6 +334,7 @@ async def get_pull(
         all_reviewers=_compute_all_reviewers(pr),
         rebased_since_approval=_rebased_since_approval(pr),
         manual_priority=pr.manual_priority,
+        labels=pr.labels or [],
         commenters_without_review=_commenters_without_review(pr),
         check_runs=[
             CheckRunOut(
@@ -568,6 +572,72 @@ async def update_priority(
     await broadcast_event(
         "priority_update",
         {"repo_id": repo_id, "number": number, "priority": body.priority},
+    )
+
+    return _pr_to_summary(pr, membership.stack_id if membership else None)
+
+
+@router.patch("/pulls/{number}/labels", response_model=PRSummary)
+async def update_labels(
+    repo_id: int,
+    number: int,
+    body: LabelUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> PRSummary:
+    """Add or remove labels on a PR - syncs to GitHub."""
+    # Validate all label names
+    invalid = [n for n in body.add + body.remove if n not in ALLOWED_LABELS]
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"Unknown labels: {', '.join(invalid)}")
+
+    result = await session.execute(
+        select(PullRequest)
+        .options(
+            selectinload(PullRequest.check_runs),
+            selectinload(PullRequest.reviews),
+            joinedload(PullRequest.assignee),
+        )
+        .where(PullRequest.repo_id == repo_id, PullRequest.number == number)
+    )
+    pr = result.scalar_one_or_none()
+    if not pr:
+        raise HTTPException(status_code=404, detail=f"PR #{number} not found")
+
+    gh, repo = await _get_github_client_for_pr(session, repo_id)
+    try:
+        for label_name in body.add:
+            info = ALLOWED_LABELS[label_name]
+            await gh.ensure_label(
+                repo.owner, repo.name, label_name, info["color"], info["description"]
+            )
+        if body.add:
+            await gh.add_labels(repo.owner, repo.name, number, body.add)
+        for label_name in body.remove:
+            await gh.remove_label(repo.owner, repo.name, number, label_name)
+    except Exception as exc:
+        logger.warning(f"Failed to sync labels on GitHub for PR #{number}: {exc}")
+        raise HTTPException(status_code=502, detail="GitHub API error") from exc
+    finally:
+        await gh.close()
+
+    # Update local JSONB
+    current = {lbl["name"]: lbl for lbl in (pr.labels or [])}
+    for label_name in body.remove:
+        current.pop(label_name, None)
+    for label_name in body.add:
+        current[label_name] = {"name": label_name, "color": ALLOWED_LABELS[label_name]["color"]}
+    pr.labels = list(current.values())
+    await session.commit()
+
+    membership = (
+        await session.execute(
+            select(PRStackMembership).where(PRStackMembership.pull_request_id == pr.id)
+        )
+    ).scalar_one_or_none()
+
+    await broadcast_event(
+        "labels_update",
+        {"repo_id": repo_id, "number": number, "labels": pr.labels},
     )
 
     return _pr_to_summary(pr, membership.stack_id if membership else None)

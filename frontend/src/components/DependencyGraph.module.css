@@ -357,26 +357,19 @@
   margin-left: auto;
 }
 
+.labelRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
 .labelBadge {
-  font-size: 0.44rem;
-  padding: 1px 4px;
+  font-size: 0.52rem;
+  padding: 1px 5px;
   border-radius: 3px;
-  color: #fff;
   font-weight: 600;
   text-transform: lowercase;
   white-space: nowrap;
-  max-width: 60px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.labelOverflow {
-  font-size: 0.44rem;
-  padding: 1px 3px;
-  border-radius: 3px;
-  background: var(--bg-tertiary, #333);
-  color: var(--text-secondary);
-  font-weight: 600;
 }
 
 .badgeWarn {

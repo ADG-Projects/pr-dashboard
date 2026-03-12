@@ -412,26 +412,29 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
           {pr.manual_priority === 'low' && <Tooltip text="Low priority" position="top"><span className={styles.priorityLowBadge}>{'\u2193'}</span></Tooltip>}
           {pr.draft && <Tooltip text="Draft PR — not ready for merge" position="top"><span className={styles.draftBadge}>Draft</span></Tooltip>}
           {pr.merged_at && <Tooltip text={`Merged ${new Date(pr.merged_at).toLocaleDateString()}`} position="top"><span className={styles.mergedBadge}>Merged</span></Tooltip>}
-          {pr.labels && pr.labels.length > 0 && (
-            <>
-              {pr.labels.slice(0, 2).map((lbl) => (
+        </div>
+        <div className={styles.cardTitle}>{pr.title}</div>
+        {pr.labels && pr.labels.length > 0 && (
+          <div className={styles.labelRow}>
+            {pr.labels.map((lbl) => {
+              const r = parseInt(lbl.color.slice(0, 2), 16);
+              const g = parseInt(lbl.color.slice(2, 4), 16);
+              const b = parseInt(lbl.color.slice(4, 6), 16);
+              return (
                 <span
                   key={lbl.name}
                   className={styles.labelBadge}
-                  style={{ backgroundColor: `#${lbl.color}` }}
+                  style={{
+                    backgroundColor: `rgba(${r}, ${g}, ${b}, 0.15)`,
+                    color: `#${lbl.color}`,
+                  }}
                 >
                   {lbl.name}
                 </span>
-              ))}
-              {pr.labels.length > 2 && (
-                <Tooltip text={pr.labels.slice(2).map((l) => l.name).join(', ')} position="top">
-                  <span className={styles.labelOverflow}>+{pr.labels.length - 2}</span>
-                </Tooltip>
-              )}
-            </>
-          )}
-        </div>
-        <div className={styles.cardTitle}>{pr.title}</div>
+              );
+            })}
+          </div>
+        )}
         <div className={styles.cardReviewers}>
           {pr.all_reviewers && pr.all_reviewers.length > 0 ? (
             <Tooltip

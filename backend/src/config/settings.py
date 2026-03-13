@@ -65,6 +65,15 @@ class Settings(BaseSettings):
 
         return self
 
+    # Webhooks
+    github_webhook_secret: str = Field(
+        default="", description="Secret for validating GitHub webhook payloads (HMAC-SHA256)"
+    )
+    webhook_base_url: str = Field(
+        default="",
+        description="Public URL where GitHub sends webhook events (e.g. ngrok/cloudflared)",
+    )
+
     # Sync
     sync_interval_seconds: int = Field(
         default=180, description="Seconds between GitHub sync cycles"

@@ -301,6 +301,149 @@ class SyncService:
         )
         logger.info(f"  Sync complete for {owner}/{name}")
 
+    async def sync_single_pr(
+        self,
+        repo_id: int,
+        owner: str,
+        name: str,
+        pr_number: int,
+        github: GitHubClient,
+    ) -> None:
+        """Sync a single PR (used by webhook handler for instant updates)."""
+        import time as _time
+
+        start = _time.monotonic()
+        logger.info(f"Webhook sync_single_pr: {owner}/{name}#{pr_number}")
+
+        async with async_session_factory() as session:
+            gh_pr = await github.get_pull(owner, name, pr_number)
+            pr = await self._upsert_pr(session, repo_id, gh_pr, gh_client=github)
+
+            # Fetch detail, workflow runs, reviews, and comments in parallel
+            (
+                runs_result,
+                reviews_result,
+                issue_comments_result,
+                review_comments_result,
+            ) = await asyncio.gather(
+                github.get_workflow_runs(owner, name, gh_pr["head"]["sha"]),
+                github.get_reviews(owner, name, pr_number),
+                github.get_issue_comments(owner, name, pr_number),
+                github.get_review_comments(owner, name, pr_number),
+                return_exceptions=True,
+            )
+
+            if isinstance(runs_result, Exception):
+                logger.warning(
+                    f"  Could not fetch workflow runs for PR #{pr_number}: {runs_result}"
+                )
+            else:
+                checks = [
+                    {
+                        "name": r["name"],
+                        "status": r["status"],
+                        "conclusion": r.get("conclusion"),
+                        "details_url": r.get("html_url"),
+                    }
+                    for r in runs_result
+                ]
+                await self._upsert_check_runs(session, pr.id, checks)
+
+            if isinstance(reviews_result, Exception):
+                logger.warning(f"  Could not fetch reviews for PR #{pr_number}: {reviews_result}")
+            else:
+                await self._upsert_reviews(session, pr.id, reviews_result, gh_client=github)
+
+            commenter_logins: set[str] = set()
+            pr_author = gh_pr["user"]["login"]
+            author_last_commented_at: datetime | None = None
+            for comments_result in (issue_comments_result, review_comments_result):
+                if isinstance(comments_result, Exception):
+                    logger.warning(
+                        f"  Could not fetch comments for PR #{pr_number}: {comments_result}"
+                    )
+                    continue
+                for comment in comments_result:
+                    login = comment.get("user", {}).get("login")
+                    if login and login == pr_author:
+                        ts = parse_gh_datetime(comment.get("created_at"))
+                        if ts and (
+                            author_last_commented_at is None or ts > author_last_commented_at
+                        ):
+                            author_last_commented_at = ts
+                    elif login:
+                        commenter_logins.add(login)
+            pr.commenters = sorted(commenter_logins)
+            pr.author_last_commented_at = author_last_commented_at
+
+            await session.commit()
+
+        # Re-detect stacks if head_ref/base_ref may have changed
+        async with async_session_factory() as session:
+            await detect_stacks(session, repo_id)
+            await session.commit()
+
+        await broadcast_event(
+            "sync_complete",
+            {"repo_id": repo_id, "owner": owner, "name": name},
+        )
+        elapsed = _time.monotonic() - start
+        logger.info(
+            f"Webhook sync_single_pr completed: {owner}/{name}#{pr_number} in {elapsed:.1f}s"
+        )
+
+    async def sync_checks_by_sha(
+        self,
+        repo_id: int,
+        owner: str,
+        name: str,
+        head_sha: str,
+        github: GitHubClient,
+    ) -> None:
+        """Sync check runs for all PRs matching a given head SHA."""
+        logger.info(f"Webhook sync_checks_by_sha: {owner}/{name} sha={head_sha[:8]}")
+
+        async with async_session_factory() as session:
+            prs = (
+                (
+                    await session.execute(
+                        select(PullRequest).where(
+                            PullRequest.repo_id == repo_id,
+                            PullRequest.head_sha == head_sha,
+                            PullRequest.state == "open",
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            if not prs:
+                logger.debug(f"  No open PRs found for sha={head_sha[:8]}")
+                return
+
+            runs = await github.get_workflow_runs(owner, name, head_sha)
+            checks = [
+                {
+                    "name": r["name"],
+                    "status": r["status"],
+                    "conclusion": r.get("conclusion"),
+                    "details_url": r.get("html_url"),
+                }
+                for r in runs
+            ]
+
+            for pr in prs:
+                await self._upsert_check_runs(session, pr.id, checks)
+                logger.debug(f"  Updated {len(checks)} checks for PR #{pr.number}")
+
+            await session.commit()
+
+        await broadcast_event(
+            "sync_complete",
+            {"repo_id": repo_id, "owner": owner, "name": name},
+        )
+
     async def _delete_if_orphaned(self, repo_id: int, repo_name: str) -> None:
         """Delete a repo if all its trackers were removed during sync."""
         async with async_session_factory() as session:

@@ -338,6 +338,53 @@ class GitHubClient:
             json={"labels": labels},
         )
 
+    # ── Webhook management ─────────────────────────────────────
+
+    async def create_webhook(
+        self,
+        owner: str,
+        repo: str,
+        callback_url: str,
+        secret: str,
+        events: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Create a webhook on a repo. Returns the created hook payload."""
+        if events is None:
+            events = [
+                "pull_request",
+                "pull_request_review",
+                "check_suite",
+                "check_run",
+                "issue_comment",
+                "pull_request_review_comment",
+            ]
+        return await self._post_json(
+            f"/repos/{owner}/{repo}/hooks",
+            json={
+                "name": "web",
+                "active": True,
+                "events": events,
+                "config": {
+                    "url": callback_url,
+                    "content_type": "json",
+                    "secret": secret,
+                    "insecure_ssl": "0",
+                },
+            },
+        )
+
+    async def delete_webhook(self, owner: str, repo: str, hook_id: int) -> None:
+        """Delete a webhook from a repo."""
+        resp = await self._request_with_retry(
+            "DELETE", f"/repos/{owner}/{repo}/hooks/{hook_id}", raise_for_status=False
+        )
+        if resp.status_code not in (204, 404):
+            _raise_for_status(resp)
+
+    async def list_webhooks(self, owner: str, repo: str) -> list[dict[str, Any]]:
+        """List all webhooks on a repo."""
+        return await self._get_paginated(f"/repos/{owner}/{repo}/hooks")
+
     async def remove_label(self, owner: str, repo: str, issue_number: int, label: str) -> None:
         """Remove a single label from an issue/PR."""
         resp = await self._request_with_retry(

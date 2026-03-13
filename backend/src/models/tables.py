@@ -115,6 +115,7 @@ class TrackedRepo(Base):
     full_name: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     default_branch: Mapped[str] = mapped_column(String(255), default="main")
+    github_webhook_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

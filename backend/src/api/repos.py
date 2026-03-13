@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from src.api.auth import get_github_user_id
 from src.api.schemas import RepoCreate, RepoDetail, RepoSummary, RepoVisibilityUpdate
+from src.api.webhook_admin import auto_register_webhook
 from src.db.engine import async_session_factory, get_session
 from src.models.tables import CheckRun, PRStack, PullRequest, RepoTracker, Space, TrackedRepo
 from src.services.crypto import decrypt_token
@@ -297,6 +298,9 @@ async def add_repo(
                 _background_sync(existing.id, existing.owner, existing.name, body.space_id)
             )
         )
+        _track_task(
+            asyncio.create_task(auto_register_webhook(existing.id, existing.owner, existing.name))
+        )
         return RepoDetail(
             id=existing.id,
             owner=existing.owner,
@@ -362,6 +366,7 @@ async def add_repo(
     _track_task(
         asyncio.create_task(_background_sync(repo.id, repo.owner, repo.name, body.space_id))
     )
+    _track_task(asyncio.create_task(auto_register_webhook(repo.id, repo.owner, repo.name)))
 
     return RepoDetail(
         id=repo.id,
@@ -385,11 +390,12 @@ async def remove_repo(
     """Remove current user's tracking of a repo. Deletes repo if no trackers remain."""
     user_id = get_github_user_id(request)
 
-    repo_name = (
-        await session.execute(select(TrackedRepo.full_name).where(TrackedRepo.id == repo_id))
+    repo_row = (
+        await session.execute(select(TrackedRepo).where(TrackedRepo.id == repo_id))
     ).scalar_one_or_none()
-    if not repo_name:
+    if not repo_row:
         raise HTTPException(status_code=404, detail="Repo not found")
+    repo_name = repo_row.full_name
 
     if user_id:
         # Delete just this user's tracker via bulk SQL (no ORM lock)
@@ -402,6 +408,30 @@ async def remove_repo(
 
     await session.commit()
     logger.info(f"Untracked repo {repo_name} for user {user_id}")
+
+    # Delete webhook from GitHub if the repo had one and no trackers remain
+    async with async_session_factory() as check_session:
+        remaining_count = (
+            await check_session.execute(
+                select(func.count(RepoTracker.id)).where(RepoTracker.repo_id == repo_id)
+            )
+        ).scalar_one()
+        if remaining_count == 0 and repo_row.github_webhook_id:
+            from src.api.webhook_admin import _get_client_for_repo
+
+            gh = await _get_client_for_repo(repo_id)
+            if gh:
+                try:
+                    await gh.delete_webhook(
+                        repo_row.owner, repo_row.name, repo_row.github_webhook_id
+                    )
+                    logger.info(
+                        f"Deleted webhook {repo_row.github_webhook_id} from {repo_name} on untrack"
+                    )
+                except Exception as exc:
+                    logger.warning(f"Failed to delete webhook from {repo_name}: {exc}")
+                finally:
+                    await gh.close()
 
     # Try to delete the orphaned repo in a fresh session. If a sync holds the
     # row lock, NOWAIT fails fast and the sync service cleans up after it finishes.

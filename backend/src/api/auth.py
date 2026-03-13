@@ -47,7 +47,7 @@ PUBLIC_PATHS = {
 PUBLIC_PATH_METHODS = {
     ("/api/auth/me", "GET"),
 }
-PUBLIC_PREFIXES = ("/api/auth/dev-login/",)
+PUBLIC_PREFIXES = ("/api/auth/dev-login/", "/api/webhooks/github")
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -229,7 +229,7 @@ async def github_oauth_start(request: Request, link: bool = False) -> RedirectRe
     state_payload = f"{mode}:{int(time.time())}:{nonce}"
     params = {
         "client_id": settings.github_oauth_client_id,
-        "scope": "repo read:org",
+        "scope": "repo read:org admin:repo_hook",
         "state": _sign(state_payload),
     }
     from urllib.parse import urlencode

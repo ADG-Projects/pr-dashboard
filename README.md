@@ -10,7 +10,7 @@ Built for teams that work with stacked PRs across multiple GitHub orgs and want 
 - **Hierarchical navigation** - Org overview (health cards per repo) -> Repo view (PRs + dependency graph) -> PR detail panel (diff stats, CI checks, reviews).
 - **Stack detection** - Automatic BFS-based detection of stacked PRs from branch relationships. Visual SVG dependency graph with parent-child arrows.
 - **Priority queue** - Cross-repo ranked view scoring every open PR on review readiness (35pts), CI status (25pts), size (15pts), mergeability (10pts), age (10pts), and rebase freshness (5pts). Stack-aware ordering respects parent-child dependencies. Manual priority overrides available.
-- **Live sync** - Background sync every 3 minutes (configurable) with SSE broadcasts for real-time UI updates. Token fallback across multiple trackers per repo.
+- **Live sync** - GitHub webhooks for instant updates (< 2s), with background polling every 15 minutes as fallback. SSE broadcasts for real-time UI updates. Token fallback across multiple trackers per repo.
 - **Collaborative tracking** - Multiple users can independently track the same repo through their own spaces. Assignee and reviewer changes sync bidirectionally with GitHub.
 - **Two-layer auth** - Optional password gate (HMAC cookie) + GitHub OAuth identity (separate cookie). Either, both, or neither.
 
@@ -72,6 +72,38 @@ Open the dashboard and click **Sign in with GitHub** (if OAuth is configured) or
 2. **Homepage URL**: `http://localhost:5173` (dev) or your production URL
 3. **Callback URL**: `http://localhost:8000/api/auth/github/callback`
 4. Set `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET` in `.env`
+
+### GitHub Webhooks (Optional)
+
+Webhooks enable instant PR updates (< 2 seconds) instead of waiting for the next polling cycle. When configured, polling is automatically reduced to a 15-minute fallback.
+
+1. Generate a webhook secret:
+   ```bash
+   python -c "import secrets; print(secrets.token_hex(32))"
+   ```
+
+2. Set up a public tunnel for local development:
+   ```bash
+   brew install cloudflared
+   cloudflared tunnel --url http://localhost:8000
+   # Gives you a public https://*.trycloudflare.com URL
+   ```
+
+3. Add to `.env`:
+   ```
+   GITHUB_WEBHOOK_SECRET=your-generated-secret
+   WEBHOOK_BASE_URL=https://your-tunnel.trycloudflare.com
+   ```
+
+4. Start the backend. Webhooks are auto-registered when you add repos. For existing repos:
+   ```bash
+   curl -X POST http://localhost:8000/api/webhooks/admin/register-all
+   ```
+
+5. Check webhook status:
+   ```bash
+   curl http://localhost:8000/api/webhooks/admin/status
+   ```
 
 ## Features in Detail
 
@@ -165,6 +197,8 @@ Lists all users in two sections:
 | `SECRET_KEY` | Session cookies + token encryption key | `change-me-in-production` |
 | `DASHBOARD_PASSWORD` | Password gate (leave empty to disable) | (empty) |
 | `SYNC_INTERVAL_SECONDS` | Seconds between GitHub sync cycles | `180` |
+| `GITHUB_WEBHOOK_SECRET` | Secret for webhook signature validation (HMAC-SHA256) | (empty) |
+| `WEBHOOK_BASE_URL` | Public URL for webhook callbacks (e.g. cloudflared tunnel) | (empty) |
 | `DEV_MODE` | Enable dev features (user impersonation) | `false` |
 | `HOST` | Server bind address | `0.0.0.0` |
 | `PORT` | Server port | `8000` |
@@ -185,6 +219,8 @@ backend/
       spaces.py     #   Space toggle + listing
       team.py       #   User management
       events.py     #   SSE endpoint
+      webhooks.py   #   GitHub webhook receiver
+      webhook_admin.py # Webhook registration + status
     config/         # Pydantic settings from env vars
     db/             # SQLAlchemy async engine + base
     models/
@@ -231,7 +267,7 @@ frontend/
 - **spaces** - Auto-discovered orgs/personal accounts (name, slug, type, is_active)
 
 ### Core Tracking
-- **tracked_repos** - Monitored repos (owner, name, sync status)
+- **tracked_repos** - Monitored repos (owner, name, sync status, webhook_id)
 - **repo_trackers** - Junction table: users independently track repos with their own space + visibility
 - **pull_requests** - PR metadata synced from GitHub (state, draft, refs, diff stats, mergeable_state, manual_priority)
 

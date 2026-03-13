@@ -39,6 +39,7 @@ For manual migrations: `cd backend && uv run alembic upgrade head`
 - **Collaborative repo ownership**: `RepoTracker` junction table links Users to TrackedRepos. Each user independently tracks a repo through their own space (and token). Multiple users can track the same repo. `visibility` and `space_id` live on RepoTracker, not TrackedRepo. Repos with zero trackers are deactivated.
 - **Token fallback**: Sync iterates all active TrackedRepos (not spaces), resolving a token from any tracker's space. If one tracker's token fails, the next is tried.
 - **Dev impersonation**: `DEV_MODE=true` enables `POST /api/auth/dev-login/{user_id}` to switch users without OAuth. Seed script creates fake users sharing the real user's token.
+- **Webhooks**: Optional GitHub webhook receiver (`POST /api/webhooks/github`) for instant PR updates. HMAC-SHA256 signature validation. Auto-registers on repo add, auto-cleans on repo delete. Polling reduced to 15-min fallback when active. Admin API at `/api/webhooks/admin/`.
 - Stack detection via BFS on `head_ref`/`base_ref` relationships between open PRs
 - SSE broadcasts progress updates and sync completions to connected clients
 - Token encryption via Fernet (key derived from SECRET_KEY)

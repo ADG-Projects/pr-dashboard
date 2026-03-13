@@ -21,6 +21,8 @@ from src.api.spaces import router as spaces_router
 from src.api.stacks import router as stacks_router
 from src.api.team import router as team_router
 from src.api.version import router as version_router
+from src.api.webhook_admin import router as webhook_admin_router
+from src.api.webhooks import router as webhooks_router
 from src.api.work_items import pr_router as work_items_pr_router
 from src.api.work_items import router as work_items_router
 from src.config.settings import settings
@@ -42,7 +44,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="PR Dashboard",
     description="GitHub PR management dashboard for organizations",
-    version="1.9.0",
+    version="1.10.0",
     lifespan=lifespan,
 )
 
@@ -73,6 +75,8 @@ app.include_router(ado_accounts_router)
 app.include_router(work_items_router)
 app.include_router(work_items_pr_router)
 app.include_router(version_router)
+app.include_router(webhooks_router)
+app.include_router(webhook_admin_router)
 
 
 @app.get("/api/health")

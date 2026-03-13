@@ -1,6 +1,7 @@
 # PR Dashboard — TODO
 
 ## Completed
+- [x] GitHub webhook support: instant PR updates via webhook receiver (`POST /api/webhooks/github`), HMAC-SHA256 signature validation, targeted single-PR and check-by-SHA sync methods, webhook CRUD on `GitHubClient`, admin API for registration/status, auto-register on repo add, auto-cleanup on repo delete, polling fallback reduced to 15 min when webhooks active (2026-03-13)
 - [x] ADO Beta badges: mark all ADO-related UI surfaces (Work Items header, Azure DevOps section, Link ADO Account button) with amber "Beta" pill badges (2026-03-13)
 - [x] PR label/tag support: two-way sync for 5 predefined labels (bug, enhancement, documentation, refactor, testing) between dashboard and GitHub, JSONB storage on PullRequest, colored badge pills on PR cards, toggleable label chips in PRDetailPanel, soft label filter dropdown on RepoView that dims non-matching PRs (2026-03-12)
 - [x] Azure DevOps work item linking: manual linking of ADO work items to PRs from the detail panel, with search by ID or title, clickable chips linking to ADO web UI, and unlink support. ADO config via env vars (org URL, project, PAT). New WorkItemLink table with alembic migration. (2026-03-11)

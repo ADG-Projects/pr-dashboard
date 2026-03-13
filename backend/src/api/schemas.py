@@ -1,8 +1,13 @@
 """Pydantic response/request schemas for the API."""
 
+import ipaddress
+import socket
 from datetime import datetime
+from urllib.parse import urlparse
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from src.config.settings import settings
 
 # ── Spaces ───────────────────────────────────────────────────
 
@@ -24,9 +29,50 @@ class SpaceOut(BaseModel):
     github_account_login: str | None = None
 
 
+_ALLOWED_GITHUB_DOMAINS = {"api.github.com", "github.com"}
+
+
 class GitHubAccountCreate(BaseModel):
     token: str
     base_url: str = "https://api.github.com"
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, v: str) -> str:
+        parsed = urlparse(v.rstrip("/"))
+
+        # Require https in production, allow http in dev mode
+        allowed_schemes = {"https", "http"} if settings.dev_mode else {"https"}
+        if parsed.scheme not in allowed_schemes:
+            raise ValueError(f"base_url must use {' or '.join(allowed_schemes)} scheme")
+
+        if not parsed.hostname:
+            raise ValueError("base_url must have a valid hostname")
+
+        # Block private/reserved IP ranges (SSRF protection)
+        if _is_private_ip(parsed.hostname):
+            raise ValueError("base_url must not point to a private or reserved IP address")
+
+        # Check against allowed domains
+        hostname = parsed.hostname.lower()
+        allowed = _ALLOWED_GITHUB_DOMAINS.copy()
+
+        # Add user-configured GHE domains
+        ghe_domains = settings.allowed_ghe_domains.strip()
+        if ghe_domains:
+            for domain in ghe_domains.split(","):
+                domain = domain.strip().lower()
+                if domain:
+                    allowed.add(domain)
+
+        if not any(hostname == d or hostname.endswith(f".{d}") for d in allowed):
+            raise ValueError(
+                f"base_url must be a recognized GitHub domain "
+                f"({', '.join(sorted(allowed))}). "
+                f"Configure ALLOWED_GHE_DOMAINS for GitHub Enterprise."
+            )
+
+        return v
 
 
 class AddSpaceRequest(BaseModel):
@@ -141,9 +187,20 @@ class PRSummary(BaseModel):
     commenters_without_review: list[str] = []
 
 
+class WorkItemOut(BaseModel):
+    id: int
+    work_item_id: int
+    title: str
+    state: str
+    work_item_type: str
+    url: str
+    assigned_to: str | None
+
+
 class PRDetail(PRSummary):
     check_runs: list[CheckRunOut] = []
     reviews: list[ReviewOut] = []
+    work_items: list[WorkItemOut] = []
 
 
 # ── Stacks ───────────────────────────────────────────────────
@@ -234,6 +291,70 @@ class ReviewerUpdate(BaseModel):
 class LabelUpdate(BaseModel):
     add: list[str] = []
     remove: list[str] = []
+
+
+# ── ADO Accounts ────────────────────────────────────────────
+
+
+_ALLOWED_ADO_DOMAINS = {
+    "dev.azure.com",
+    "visualstudio.com",
+}
+
+
+def _is_private_ip(hostname: str) -> bool:
+    """Check if a hostname resolves to a private/reserved IP address."""
+    try:
+        addr_info = socket.getaddrinfo(hostname, None)
+        for _, _, _, _, sockaddr in addr_info:
+            ip = ipaddress.ip_address(sockaddr[0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return True
+    except socket.gaierror:
+        pass
+    return False
+
+
+class AdoAccountCreate(BaseModel):
+    token: str
+    org_url: str
+    project: str
+
+    @field_validator("org_url")
+    @classmethod
+    def validate_org_url(cls, v: str) -> str:
+        parsed = urlparse(v.rstrip("/"))
+
+        # Require https in production, allow http in dev mode
+        allowed_schemes = {"https", "http"} if settings.dev_mode else {"https"}
+        if parsed.scheme not in allowed_schemes:
+            raise ValueError(f"org_url must use {' or '.join(allowed_schemes)} scheme")
+
+        if not parsed.hostname:
+            raise ValueError("org_url must have a valid hostname")
+
+        # Block private/reserved IP ranges (SSRF protection)
+        if _is_private_ip(parsed.hostname):
+            raise ValueError("org_url must not point to a private or reserved IP address")
+
+        # Restrict to known ADO domains
+        hostname = parsed.hostname.lower()
+        if not any(hostname == d or hostname.endswith(f".{d}") for d in _ALLOWED_ADO_DOMAINS):
+            raise ValueError(
+                f"org_url must be a recognized Azure DevOps domain "
+                f"({', '.join(sorted(_ALLOWED_ADO_DOMAINS))})"
+            )
+
+        return v
+
+
+class AdoAccountOut(BaseModel):
+    id: int
+    org_url: str
+    project: str
+    display_name: str | None
+    has_token: bool
+    created_at: datetime
 
 
 # ── Auth ─────────────────────────────────────────────────────

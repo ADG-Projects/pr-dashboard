@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type GitHubAccountInfo, type Space } from '../api/client';
+import { api, type AdoAccountInfo, type GitHubAccountInfo, type Space } from '../api/client';
 import { useCurrentUser } from '../App';
 import { GitHubIcon } from './GitHubIcon';
 import styles from './SpaceManager.module.css';
@@ -15,6 +15,7 @@ export function SpaceManager({ onClose }: Props) {
   const qc = useQueryClient();
   const { user, oauthConfigured } = useCurrentUser();
   const [showTokenForm, setShowTokenForm] = useState(false);
+  const [showAdoForm, setShowAdoForm] = useState(false);
   const [patLinked, setPatLinked] = useState(false);
   const initialHadActiveRef = useRef<boolean | null>(null);
 
@@ -27,6 +28,20 @@ export function SpaceManager({ onClose }: Props) {
   const { data: spaces } = useQuery({
     queryKey: ['spaces'],
     queryFn: api.listSpaces,
+  });
+
+  const { data: adoAccounts } = useQuery({
+    queryKey: ['ado-accounts'],
+    queryFn: api.listAdoAccounts,
+    enabled: !!user,
+  });
+
+  const removeAdoMutation = useMutation({
+    mutationFn: (accountId: number) => api.removeAdoAccount(accountId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ado-accounts'], refetchType: 'active' });
+      qc.invalidateQueries({ queryKey: ['ado-status'], refetchType: 'active' });
+    },
   });
 
   const toggleMutation = useMutation({
@@ -192,6 +207,54 @@ export function SpaceManager({ onClose }: Props) {
                 </>
               )}
             </div>
+          )}
+
+          {user && (
+            <>
+              <div className={styles.accountSection} style={{ marginTop: '1.5rem' }}>
+                <div className={styles.accountHeader}>
+                  <span className={styles.accountLogin}>Azure DevOps <span className="betaBadge">Beta</span></span>
+                </div>
+                {adoAccounts && adoAccounts.length > 0 ? (
+                  adoAccounts.map((ado) => (
+                    <AdoAccountRow
+                      key={ado.id}
+                      account={ado}
+                      onRemove={() => {
+                        if (window.confirm(`Remove ADO account "${ado.display_name || ado.org_url}"?`)) {
+                          removeAdoMutation.mutate(ado.id);
+                        }
+                      }}
+                    />
+                  ))
+                ) : (
+                  <p className={styles.hint} style={{ margin: '0.25rem 0 0 0' }}>
+                    Link an ADO account to enable work item integration.
+                  </p>
+                )}
+              </div>
+
+              {showAdoForm ? (
+                <AdoLinkForm
+                  onLinked={() => {
+                    setShowAdoForm(false);
+                    qc.invalidateQueries({ queryKey: ['ado-accounts'], refetchType: 'active' });
+                    qc.invalidateQueries({ queryKey: ['ado-status'], refetchType: 'active' });
+                  }}
+                  onCancel={() => setShowAdoForm(false)}
+                />
+              ) : (
+                <div className={styles.linkButtons}>
+                  <button
+                    className={`${styles.linkBtn} ${styles.linkBtnSecondary}`}
+                    onClick={() => setShowAdoForm(true)}
+                  >
+                    + Link ADO Account <span className="betaBadge">Beta</span>
+                    <span className={styles.linkBtnHint}>for Azure DevOps work item integration</span>
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -386,6 +449,112 @@ function SpaceRow({
       >
         {space.is_active ? 'Active' : 'Activate'}
       </button>
+    </div>
+  );
+}
+
+function AdoAccountRow({
+  account,
+  onRemove,
+}: {
+  account: AdoAccountInfo;
+  onRemove: () => void;
+}) {
+  return (
+    <div className={styles.spaceRow}>
+      <span className={styles.spaceName}>
+        {account.display_name || `${account.org_url} / ${account.project}`}
+      </span>
+      <span className={styles.spaceType}>ADO</span>
+      <button
+        className={`${styles.actionBtn} ${styles.deleteAction}`}
+        onClick={onRemove}
+        title="Remove ADO account"
+      >
+        Remove
+      </button>
+    </div>
+  );
+}
+
+function AdoLinkForm({
+  onLinked,
+  onCancel,
+}: {
+  onLinked: () => void;
+  onCancel: () => void;
+}) {
+  const [token, setToken] = useState('');
+  const [orgUrl, setOrgUrl] = useState('');
+  const [project, setProject] = useState('');
+  const [error, setError] = useState('');
+
+  const linkMutation = useMutation({
+    mutationFn: () => api.linkAdoAccount(token, orgUrl, project),
+    onSuccess: onLinked,
+    onError: (e: Error) => setError(e.message),
+  });
+
+  return (
+    <div className={styles.tokenForm}>
+      <h3 className={styles.tokenFormTitle}>Link ADO account</h3>
+      <p className={styles.tokenFormHint}>
+        Paste a Personal Access Token to enable Azure DevOps work item linking.
+      </p>
+      <details className={styles.tokenGuide}>
+        <summary>How to create an ADO token</summary>
+        <div className={styles.tokenGuideBody}>
+          <ol>
+            <li>Go to <strong>Azure DevOps</strong> &rarr; User Settings (top-right) &rarr; <strong>Personal Access Tokens</strong></li>
+            <li>Click <strong>New Token</strong></li>
+            <li><strong>Name</strong> &mdash; anything you like (e.g. "PR Dashboard")</li>
+            <li><strong>Organization</strong> &mdash; select your organization</li>
+            <li><strong>Expiration</strong> &mdash; 90 days is a good default</li>
+            <li>Under <strong>Scopes</strong>, select: <strong>Work Items</strong> &rarr; Read &amp; Write</li>
+            <li>Click <strong>Create</strong> and copy the token</li>
+          </ol>
+          <p className={styles.tokenGuideNote}>
+            The organization URL should look like <code>https://dev.azure.com/YourOrg</code>
+          </p>
+        </div>
+      </details>
+      {error && <div className={styles.tokenFormError}>{error}</div>}
+      <div className={styles.tokenFormRow}>
+        <label>Personal Access Token</label>
+        <input
+          type="password"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder="your-ado-pat"
+          autoFocus
+        />
+      </div>
+      <div className={styles.tokenFormRow}>
+        <label>Organization URL</label>
+        <input
+          value={orgUrl}
+          onChange={(e) => setOrgUrl(e.target.value)}
+          placeholder="https://dev.azure.com/YourOrg"
+        />
+      </div>
+      <div className={styles.tokenFormRow}>
+        <label>Project name</label>
+        <input
+          value={project}
+          onChange={(e) => setProject(e.target.value)}
+          placeholder="My Project"
+        />
+      </div>
+      <div className={styles.tokenFormActions}>
+        <button className={styles.actionBtn} onClick={onCancel}>Cancel</button>
+        <button
+          className={styles.linkBtn}
+          disabled={!token.trim() || !orgUrl.trim() || !project.trim() || linkMutation.isPending}
+          onClick={() => linkMutation.mutate()}
+        >
+          {linkMutation.isPending ? 'Linking...' : 'Link account'}
+        </button>
+      </div>
     </div>
   );
 }

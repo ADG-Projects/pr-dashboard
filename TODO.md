@@ -1,7 +1,9 @@
 # PR Dashboard — TODO
 
 ## Completed
+- [x] ADO Beta badges: mark all ADO-related UI surfaces (Work Items header, Azure DevOps section, Link ADO Account button) with amber "Beta" pill badges (2026-03-13)
 - [x] PR label/tag support: two-way sync for 5 predefined labels (bug, enhancement, documentation, refactor, testing) between dashboard and GitHub, JSONB storage on PullRequest, colored badge pills on PR cards, toggleable label chips in PRDetailPanel, soft label filter dropdown on RepoView that dims non-matching PRs (2026-03-12)
+- [x] Azure DevOps work item linking: manual linking of ADO work items to PRs from the detail panel, with search by ID or title, clickable chips linking to ADO web UI, and unlink support. ADO config via env vars (org URL, project, PAT). New WorkItemLink table with alembic migration. (2026-03-11)
 - [x] Flag "Commented but No Formal Review": detect commenters who left comments (conversation or inline) without submitting a formal GitHub review, surface as amber "Commented (no review)" badge in PRDetailPanel reviewer list and "Unsubmitted review" badge in Priority Queue, +5 owner score bonus, summary stat in owner mode (2026-03-10)
 - [x] Priority queue Review/Owner modes: segmented toggle splits priority queue into "Review Queue" (PRs where I'm a requested reviewer, scored by ball-in-my-court logic) and "My PRs" (PRs I authored, scored by action-required signals like failing CI, changes requested, conflicts). Mode-aware tooltips, badges, scoring guide, and summary stats. Unauthenticated users fall back to legacy scoring. Backend filtering by reviewer/author moved server-side. (2026-03-10)
 - [x] PR prioritization: cross-repo priority queue ranking all open PRs by computed score (review readiness, CI, size, mergeability, age, rebase, draft penalty), stack-aware merge/review order respecting parent-child dependencies, score breakdown tooltip, new `/prioritize` page with summary bar and ranked list (2026-03-09)

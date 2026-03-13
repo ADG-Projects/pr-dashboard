@@ -144,7 +144,7 @@ async def test_set_priority_high(authed_client, setup):
 
     with (
         patch(
-            "src.api.pulls._get_github_client_for_pr",
+            "src.api.pulls._get_github_client_for_user",
             new_callable=AsyncMock,
         ) as mock_get_gh,
     ):
@@ -174,7 +174,7 @@ async def test_set_priority_low(authed_client, setup):
     pr = setup["prs"]["normal2"]
 
     with patch(
-        "src.api.pulls._get_github_client_for_pr",
+        "src.api.pulls._get_github_client_for_user",
         new_callable=AsyncMock,
     ) as mock_get_gh:
         mock_gh = AsyncMock()
@@ -199,7 +199,7 @@ async def test_clear_priority(authed_client, setup):
     pr = setup["prs"]["high"]  # already high
 
     with patch(
-        "src.api.pulls._get_github_client_for_pr",
+        "src.api.pulls._get_github_client_for_user",
         new_callable=AsyncMock,
     ) as mock_get_gh:
         mock_gh = AsyncMock()
@@ -223,7 +223,7 @@ async def test_change_priority_high_to_low(authed_client, setup):
     pr = setup["prs"]["high"]
 
     with patch(
-        "src.api.pulls._get_github_client_for_pr",
+        "src.api.pulls._get_github_client_for_user",
         new_callable=AsyncMock,
     ) as mock_get_gh:
         mock_gh = AsyncMock()
@@ -260,7 +260,7 @@ async def test_priority_404_nonexistent_pr(authed_client, setup):
     repo = setup["repo"]
 
     with patch(
-        "src.api.pulls._get_github_client_for_pr",
+        "src.api.pulls._get_github_client_for_user",
         new_callable=AsyncMock,
     ):
         resp = await authed_client.patch(

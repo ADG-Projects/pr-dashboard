@@ -2,12 +2,13 @@
 
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
+from src.api.auth import get_github_user_id
 from src.api.schemas import (
     AssigneeUpdate,
     CheckRunOut,
@@ -17,6 +18,7 @@ from src.api.schemas import (
     PRSummary,
     ReviewerUpdate,
     ReviewOut,
+    WorkItemOut,
 )
 from src.db.engine import get_session
 from src.models.tables import (
@@ -68,6 +70,54 @@ async def _get_github_client_for_pr(
                     return GitHubClient(token=token, base_url=account.base_url), repo
 
     raise HTTPException(status_code=400, detail="No GitHub token available for this repo")
+
+
+async def _get_github_client_for_user(
+    session: AsyncSession, repo_id: int, user_id: int
+) -> tuple[GitHubClient, TrackedRepo]:
+    """Resolve the current user's GitHub token for write operations on a repo.
+
+    Write operations (reviewer requests, assignee changes, labels) must use the
+    acting user's token so GitHub attributes the action correctly.
+    """
+    repo = await session.get(TrackedRepo, repo_id)
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repo not found")
+
+    # Find the space slug from any tracker on this repo
+    tracker = (
+        await session.execute(
+            select(RepoTracker)
+            .options(selectinload(RepoTracker.space))
+            .where(RepoTracker.repo_id == repo_id, RepoTracker.space_id.isnot(None))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if not tracker or not tracker.space:
+        raise HTTPException(status_code=403, detail="No space found for this repo")
+
+    # Find the user's GitHub account linked to a space with the same slug
+    account = (
+        await session.execute(
+            select(GitHubAccount)
+            .join(Space, Space.github_account_id == GitHubAccount.id)
+            .where(
+                GitHubAccount.user_id == user_id,
+                Space.slug == tracker.space.slug,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if account and account.encrypted_token:
+        token = decrypt_token(account.encrypted_token)
+        if token:
+            return GitHubClient(token=token, base_url=account.base_url), repo
+
+    raise HTTPException(
+        status_code=403,
+        detail="You don't have a GitHub token for this repo's space",
+    )
 
 
 def _compute_ci_status(checks: list[CheckRun]) -> str:
@@ -300,6 +350,7 @@ async def get_pull(
         .options(
             selectinload(PullRequest.check_runs),
             selectinload(PullRequest.reviews),
+            selectinload(PullRequest.work_item_links),
             joinedload(PullRequest.assignee),
         )
         .where(PullRequest.repo_id == repo_id, PullRequest.number == number)
@@ -355,6 +406,18 @@ async def get_pull(
             )
             for r in pr.reviews
         ],
+        work_items=[
+            WorkItemOut(
+                id=w.id,
+                work_item_id=w.work_item_id,
+                title=w.title,
+                state=w.state,
+                work_item_type=w.work_item_type,
+                url=w.url,
+                assigned_to=w.assigned_to,
+            )
+            for w in pr.work_item_links
+        ],
     )
 
 
@@ -363,6 +426,7 @@ async def update_assignee(
     repo_id: int,
     number: int,
     body: AssigneeUpdate,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> PRSummary:
     """Set or clear the assignee for a PR — writes to GitHub first."""
@@ -387,8 +451,11 @@ async def update_assignee(
             raise HTTPException(status_code=404, detail="User not found")
         logins = [user.login]
 
-    # Write to GitHub first
-    gh, repo = await _get_github_client_for_pr(session, repo_id)
+    # Write to GitHub using the acting user's token
+    user_id = get_github_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    gh, repo = await _get_github_client_for_user(session, repo_id, user_id)
     try:
         await gh.set_assignees(repo.owner, repo.name, number, logins)
     except Exception as exc:
@@ -453,6 +520,7 @@ async def update_reviewers(
     repo_id: int,
     number: int,
     body: ReviewerUpdate,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, list[dict]]:
     """Add or remove requested reviewers — writes to GitHub first."""
@@ -463,7 +531,11 @@ async def update_reviewers(
     if not pr:
         raise HTTPException(status_code=404, detail=f"PR #{number} not found")
 
-    gh, repo = await _get_github_client_for_pr(session, repo_id)
+    # Use the acting user's token so GitHub attributes the action correctly
+    user_id = get_github_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    gh, repo = await _get_github_client_for_user(session, repo_id, user_id)
 
     # Resolve user_ids → GitHub logins + avatars in the repo's context
     add_entries: list[tuple[str, str | None]] = []
@@ -509,6 +581,7 @@ async def update_priority(
     repo_id: int,
     number: int,
     body: PriorityUpdate,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> PRSummary:
     """Set or clear the manual priority for a PR — syncs labels to GitHub."""
@@ -537,7 +610,11 @@ async def update_priority(
         "low": "Low priority — review/merge last",
     }
 
-    gh, repo = await _get_github_client_for_pr(session, repo_id)
+    # Use the acting user's token so GitHub attributes the action correctly
+    user_id = get_github_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    gh, repo = await _get_github_client_for_user(session, repo_id, user_id)
     try:
         # Remove old priority label if it changed
         if old_priority and old_priority != body.priority:

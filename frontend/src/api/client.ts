@@ -116,9 +116,29 @@ export interface Review {
   submitted_at: string;
 }
 
+export interface WorkItem {
+  id: number;
+  work_item_id: number;
+  title: string;
+  state: string;
+  work_item_type: string;
+  url: string;
+  assigned_to: string | null;
+}
+
+export interface WorkItemSearchResult {
+  work_item_id: number;
+  title: string;
+  state: string;
+  work_item_type: string;
+  url: string;
+  assigned_to: string | null;
+}
+
 export interface PRDetail extends PRSummary {
   check_runs: CheckRun[];
   reviews: Review[];
+  work_items: WorkItem[];
 }
 
 export interface StackMember {
@@ -200,6 +220,15 @@ export const ALLOWED_LABELS = [
   { name: 'refactor', color: '7057ff', description: 'Code restructuring' },
   { name: 'testing', color: 'fbca04', description: 'Test-related changes' },
 ] as const;
+
+export interface AdoAccountInfo {
+  id: number;
+  org_url: string;
+  project: string;
+  display_name: string | null;
+  has_token: boolean;
+  created_at: string;
+}
 
 // ── API functions ────────────────────────────────
 
@@ -330,6 +359,32 @@ export const api = {
     request<PRSummary>(`/api/repos/${repoId}/pulls/${number}/labels`, {
       method: 'PATCH',
       body: JSON.stringify({ add, remove }),
+    }),
+
+  // ADO Accounts
+  listAdoAccounts: () => request<AdoAccountInfo[]>('/api/ado-accounts'),
+  linkAdoAccount: (token: string, orgUrl: string, project: string) =>
+    request<AdoAccountInfo>('/api/ado-accounts', {
+      method: 'POST',
+      body: JSON.stringify({ token, org_url: orgUrl, project }),
+    }),
+  removeAdoAccount: (accountId: number) =>
+    request<void>(`/api/ado-accounts/${accountId}`, { method: 'DELETE' }),
+
+  // ADO Work Items
+  getAdoStatus: () => request<{ configured: boolean }>('/api/ado/status'),
+  listAdoWorkItems: () =>
+    request<WorkItemSearchResult[]>('/api/ado/work-items'),
+  searchAdoWorkItems: (q: string) =>
+    request<WorkItemSearchResult[]>(`/api/ado/search?q=${encodeURIComponent(q)}`),
+  linkWorkItem: (repoId: number, number: number, workItemId: number) =>
+    request<WorkItem>(`/api/repos/${repoId}/pulls/${number}/work-items`, {
+      method: 'POST',
+      body: JSON.stringify({ work_item_id: workItemId }),
+    }),
+  unlinkWorkItem: (repoId: number, number: number, workItemId: number) =>
+    request<void>(`/api/repos/${repoId}/pulls/${number}/work-items/${workItemId}`, {
+      method: 'DELETE',
     }),
 
   // Auth

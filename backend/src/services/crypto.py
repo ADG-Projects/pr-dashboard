@@ -12,7 +12,8 @@ from src.config.settings import settings
 
 @lru_cache(maxsize=1)
 def _get_fernet() -> Fernet:
-    key = hashlib.sha256(settings.secret_key.encode()).digest()
+    raw_key = settings.encryption_key or settings.secret_key
+    key = hashlib.sha256(raw_key.encode()).digest()
     return Fernet(base64.urlsafe_b64encode(key))
 
 

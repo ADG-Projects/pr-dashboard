@@ -22,6 +22,22 @@ a:hover {
   text-decoration: underline;
 }
 
+/* Beta badge */
+.betaBadge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1em 0.45em;
+  border-radius: 4px;
+  background: rgba(217, 158, 46, 0.15);
+  color: #c5920a;
+  vertical-align: middle;
+  margin-left: 0.4em;
+  line-height: 1.4;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;

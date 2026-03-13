@@ -352,6 +352,10 @@
 .addReviewerSearchWrap {
   padding: 0.4rem 0.5rem;
   border-bottom: 1px solid var(--border-default);
+  position: sticky;
+  top: 0;
+  background: var(--bg-surface);
+  z-index: 1;
 }
 
 .addReviewerSearchInput {
@@ -467,6 +471,84 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
+
+/* Work Items */
+.workItemList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.workItemChip {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  padding: 0.25rem 0;
+}
+
+.workItemType {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--accent-blue);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.workItemTitle {
+  color: var(--accent-teal);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.workItemTitle:hover {
+  text-decoration: underline;
+}
+
+.workItemSearchRow {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.workItemSearchRow .addReviewerSearchInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.typeFilterToggle {
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: 9999px;
+  color: var(--text-dim);
+  font-size: 0.65rem;
+  font-family: inherit;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.typeFilterToggle:hover {
+  border-color: var(--accent-blue);
+  color: var(--text-primary);
+}
+.typeFilterToggleActive {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #fff;
+}
+
+.workItemState {
+  font-size: 0.68rem;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+.workItemStateActive { color: var(--accent-blue); }
+.workItemStateClosed { color: var(--accent-green-dim); }
 
 /* Priority toggle */
 .priorityToggle {

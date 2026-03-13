@@ -58,6 +58,9 @@ class User(Base):
     github_accounts: Mapped[list["GitHubAccount"]] = relationship(
         back_populates="user", passive_deletes=True
     )
+    ado_accounts: Mapped[list["AdoAccount"]] = relationship(
+        back_populates="user", passive_deletes=True
+    )
 
 
 class GitHubAccount(Base):
@@ -182,6 +185,9 @@ class PullRequest(Base):
     quality_snapshots: Mapped[list["QualitySnapshot"]] = relationship(
         back_populates="pull_request", cascade="all, delete-orphan"
     )
+    work_item_links: Mapped[list["WorkItemLink"]] = relationship(
+        back_populates="pull_request", cascade="all, delete-orphan"
+    )
 
 
 class CheckRun(Base):
@@ -265,3 +271,44 @@ class QualitySnapshot(Base):
     )
 
     pull_request: Mapped["PullRequest"] = relationship(back_populates="quality_snapshots")
+
+
+class AdoAccount(Base):
+    """Per-user Azure DevOps credentials (PAT + org/project)."""
+
+    __tablename__ = "ado_accounts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "org_url", "project", name="uq_user_ado_org_project"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    encrypted_token: Mapped[str] = mapped_column(Text, nullable=False)
+    org_url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    project: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped["User"] = relationship(back_populates="ado_accounts")
+
+
+class WorkItemLink(Base):
+    """Links a PR to an Azure DevOps work item."""
+
+    __tablename__ = "work_item_links"
+    __table_args__ = (UniqueConstraint("pull_request_id", "work_item_id", name="uq_pr_work_item"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pull_request_id: Mapped[int] = mapped_column(ForeignKey("pull_requests.id", ondelete="CASCADE"))
+    work_item_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(1024), nullable=False)
+    state: Mapped[str] = mapped_column(String(100), nullable=False)
+    work_item_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    assigned_to: Mapped[str | None] = mapped_column(String(255))
+    last_synced_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    pull_request: Mapped["PullRequest"] = relationship(back_populates="work_item_links")

@@ -79,6 +79,10 @@ class Settings(BaseSettings):
         default="change-me-in-production",
         description="Secret key for signing session cookies",
     )
+    encryption_key: str | None = Field(
+        default=None,
+        description="Dedicated key for Fernet token encryption; falls back to secret_key",
+    )
     session_max_age_seconds: int = Field(
         default=7 * 24 * 3600, description="Session cookie lifetime"
     )
@@ -92,6 +96,12 @@ class Settings(BaseSettings):
     # Frontend URL (for OAuth redirect; defaults to Vite dev server, override in production)
     frontend_url: str = Field(
         default="http://localhost:5173", description="Frontend URL for redirects"
+    )
+
+    # GitHub Enterprise (for SSRF protection on base_url)
+    allowed_ghe_domains: str = Field(
+        default="",
+        description="Comma-separated allowed GHE domains",
     )
 
     # Dev mode

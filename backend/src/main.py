@@ -24,12 +24,7 @@ from src.api.webhooks import router as webhooks_router
 from src.config.settings import settings
 from src.services.sync_service import SyncService
 
-_sync_interval = settings.sync_interval_seconds
-if settings.github_webhook_secret:
-    _sync_interval = max(_sync_interval, 900)  # 15 min minimum when webhooks handle fast path
-    logger.info(f"Webhooks enabled, polling interval set to {_sync_interval}s")
-
-sync_service = SyncService(interval_seconds=_sync_interval)
+sync_service = SyncService(interval_seconds=settings.sync_interval_seconds)
 
 
 @asynccontextmanager

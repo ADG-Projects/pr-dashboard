@@ -115,124 +115,125 @@ export function SpaceManager({ onClose }: Props) {
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
-          <h2>GitHub Accounts</h2>
+          <h2>Linked Accounts</h2>
           <button onClick={onClose} className={styles.closeBtn}>x</button>
         </div>
         <div className={styles.body}>
           <p className={styles.hint}>
-            Each GitHub account you link is scanned for organizations and personal repos.
+            Link GitHub or Azure DevOps accounts to discover organizations and repos.
             Activate a space to track its repositories on the dashboard.
           </p>
 
-          {accounts?.map((account) => (
-            <AccountSection
-              key={account.id}
-              account={account}
-              spaces={spacesByAccount.get(account.id) ?? []}
-              onToggleSpace={(id, active) => toggleMutation.mutate({ id, isActive: active })}
-              onDiscover={() => discoverMutation.mutate(account.id)}
-              onRemove={() => {
-                if (window.confirm(`Unlink ${account.login}? All its spaces will be permanently removed. You can rediscover them by linking the account again.`)) {
-                  removeAccountMutation.mutate(account.id);
-                }
-              }}
-              isDiscovering={discoverMutation.isPending}
-              showPulse={!hasActiveSpace}
-            />
-          ))}
+          <div className={styles.providerSection}>
+            <div className={styles.providerHeader}>GitHub</div>
 
-          {orphanSpaces.length > 0 && (
-            <div className={styles.accountSection}>
-              <div className={styles.accountHeader}>
-                <span className={styles.accountLogin}>Legacy spaces</span>
-              </div>
-              {orphanSpaces.map((space) => (
-                <SpaceRow
-                  key={space.id}
-                  space={space}
-                  onToggle={(active) => toggleMutation.mutate({ id: space.id, isActive: active })}
-                  showPulse={!hasActiveSpace}
-                />
-              ))}
-            </div>
-          )}
+            {accounts?.map((account) => (
+              <AccountSection
+                key={account.id}
+                account={account}
+                spaces={spacesByAccount.get(account.id) ?? []}
+                onToggleSpace={(id, active) => toggleMutation.mutate({ id, isActive: active })}
+                onDiscover={() => discoverMutation.mutate(account.id)}
+                onRemove={() => {
+                  if (window.confirm(`Unlink ${account.login}? All its spaces will be permanently removed. You can rediscover them by linking the account again.`)) {
+                    removeAccountMutation.mutate(account.id);
+                  }
+                }}
+                isDiscovering={discoverMutation.isPending}
+                showPulse={!hasActiveSpace}
+              />
+            ))}
 
-          {(!accounts || accounts.length === 0) && !user && (
-            <div className={styles.empty}>
-              Sign in with GitHub to get started.
-            </div>
-          )}
-
-          {!hasActiveSpace && (spaces?.length ?? 0) > 0 && (
-            <div className={styles.firstTimeHint}>
-              Activate a space to start tracking its repos
-            </div>
-          )}
-
-          {showTokenForm ? (
-            <TokenLinkForm
-              onLinked={() => {
-                setShowTokenForm(false);
-                setPatLinked(true);
-                qc.invalidateQueries({ queryKey: ['accounts'], refetchType: 'active' });
-                qc.invalidateQueries({ queryKey: ['spaces'], refetchType: 'active' });
-              }}
-              onCancel={() => setShowTokenForm(false)}
-            />
-          ) : (
-            <div className={styles.linkButtons}>
-              {oauthConfigured && !user && (
-                <button className={styles.linkBtn} onClick={handleSignIn}>
-                  <GitHubIcon size={16} />
-                  Sign in with GitHub
-                </button>
-              )}
-              {oauthConfigured && user && (
-                <button className={styles.linkBtn} onClick={handleLinkOAuth}>
-                  <GitHubIcon size={16} />
-                  Link another GitHub account
-                </button>
-              )}
-              {user && (
-                <>
-                  {showPatGuidance && (
-                    <div className={styles.patHint}>
-                      Need access to a GitHub Enterprise instance or want fine-grained token control? Link a Personal Access Token below.
-                    </div>
-                  )}
-                  <button className={`${styles.linkBtn} ${styles.linkBtnSecondary} ${showPatGuidance ? styles.linkBtnPulse : ''}`} onClick={() => setShowTokenForm(true)}>
-                    + Link with Personal Access Token
-                    <span className={styles.linkBtnHint}>for GitHub Enterprise or fine-grained access</span>
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-
-          {user && (
-            <>
-              <div className={styles.accountSection} style={{ marginTop: '1.5rem' }}>
+            {orphanSpaces.length > 0 && (
+              <div className={styles.accountSection}>
                 <div className={styles.accountHeader}>
-                  <span className={styles.accountLogin}>Azure DevOps <span className="betaBadge">Beta</span></span>
+                  <span className={styles.accountLogin}>Legacy spaces</span>
                 </div>
-                {adoAccounts && adoAccounts.length > 0 ? (
-                  adoAccounts.map((ado) => (
-                    <AdoAccountRow
-                      key={ado.id}
-                      account={ado}
-                      onRemove={() => {
-                        if (window.confirm(`Remove ADO account "${ado.display_name || ado.org_url}"?`)) {
-                          removeAdoMutation.mutate(ado.id);
-                        }
-                      }}
-                    />
-                  ))
-                ) : (
-                  <p className={styles.hint} style={{ margin: '0.25rem 0 0 0' }}>
-                    Link an ADO account to enable work item integration.
-                  </p>
+                {orphanSpaces.map((space) => (
+                  <SpaceRow
+                    key={space.id}
+                    space={space}
+                    onToggle={(active) => toggleMutation.mutate({ id: space.id, isActive: active })}
+                    showPulse={!hasActiveSpace}
+                  />
+                ))}
+              </div>
+            )}
+
+            {(!accounts || accounts.length === 0) && !user && (
+              <div className={styles.empty}>
+                Sign in with GitHub to get started.
+              </div>
+            )}
+
+            {!hasActiveSpace && (spaces?.length ?? 0) > 0 && (
+              <div className={styles.firstTimeHint}>
+                Activate a space to start tracking its repos
+              </div>
+            )}
+
+            {showTokenForm ? (
+              <TokenLinkForm
+                onLinked={() => {
+                  setShowTokenForm(false);
+                  setPatLinked(true);
+                  qc.invalidateQueries({ queryKey: ['accounts'], refetchType: 'active' });
+                  qc.invalidateQueries({ queryKey: ['spaces'], refetchType: 'active' });
+                }}
+                onCancel={() => setShowTokenForm(false)}
+              />
+            ) : (
+              <div className={styles.linkButtons}>
+                {oauthConfigured && !user && (
+                  <button className={styles.linkBtn} onClick={handleSignIn}>
+                    <GitHubIcon size={16} />
+                    Sign in with GitHub
+                  </button>
+                )}
+                {oauthConfigured && user && (
+                  <button className={styles.linkBtn} onClick={handleLinkOAuth}>
+                    <GitHubIcon size={16} />
+                    Link another GitHub account
+                  </button>
+                )}
+                {user && (
+                  <>
+                    {showPatGuidance && (
+                      <div className={styles.patHint}>
+                        Need access to a GitHub Enterprise instance or want fine-grained token control? Link a Personal Access Token below.
+                      </div>
+                    )}
+                    <button className={`${styles.linkBtn} ${styles.linkBtnSecondary} ${showPatGuidance ? styles.linkBtnPulse : ''}`} onClick={() => setShowTokenForm(true)}>
+                      + Link with Personal Access Token
+                      <span className={styles.linkBtnHint}>for GitHub Enterprise or fine-grained access</span>
+                    </button>
+                  </>
                 )}
               </div>
+            )}
+          </div>
+
+          {user && (
+            <div className={styles.providerSection}>
+              <div className={styles.providerHeader}>Azure DevOps <span className="betaBadge">Beta</span></div>
+
+              {adoAccounts && adoAccounts.length > 0 ? (
+                adoAccounts.map((ado) => (
+                  <AdoAccountRow
+                    key={ado.id}
+                    account={ado}
+                    onRemove={() => {
+                      if (window.confirm(`Remove ADO account "${ado.display_name || ado.org_url}"?`)) {
+                        removeAdoMutation.mutate(ado.id);
+                      }
+                    }}
+                  />
+                ))
+              ) : (
+                <p className={styles.hint} style={{ margin: '0.25rem 0 0 0' }}>
+                  Link an ADO account to enable work item integration.
+                </p>
+              )}
 
               {showAdoForm ? (
                 <AdoLinkForm
@@ -249,12 +250,12 @@ export function SpaceManager({ onClose }: Props) {
                     className={`${styles.linkBtn} ${styles.linkBtnSecondary}`}
                     onClick={() => setShowAdoForm(true)}
                   >
-                    + Link ADO Account <span className="betaBadge">Beta</span>
+                    + Link ADO Account
                     <span className={styles.linkBtnHint}>for Azure DevOps work item integration</span>
                   </button>
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
       </div>

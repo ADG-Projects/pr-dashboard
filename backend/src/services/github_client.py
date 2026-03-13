@@ -70,7 +70,9 @@ class GitHubClient:
             }
             if self._token:
                 headers["Authorization"] = f"Bearer {self._token}"
-            self._client = httpx.AsyncClient(base_url=self._base_url, headers=headers, timeout=30.0)
+            self._client = httpx.AsyncClient(
+                base_url=self._base_url, headers=headers, timeout=30.0, follow_redirects=True
+            )
         return self._client
 
     async def close(self) -> None:

@@ -57,6 +57,30 @@
   margin: 0 0 1rem 0;
 }
 
+/* Provider section */
+.providerSection {
+  margin-bottom: 1.25rem;
+}
+
+.providerHeader {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.providerHeader::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-default);
+}
+
 /* Account section */
 .accountSection {
   margin-bottom: 1rem;
@@ -104,6 +128,11 @@
   border-radius: var(--radius-sm);
   margin-bottom: 0.15rem;
 }
+.spaceRow > .actionBtn {
+  min-width: 62px;
+  text-align: center;
+  flex-shrink: 0;
+}
 .spaceRow:hover {
   background: var(--bg-elevated);
 }
@@ -116,8 +145,9 @@
   cursor: pointer;
   font-family: inherit;
   font-weight: 600;
-  min-width: 52px;
+  min-width: 62px;
   text-align: center;
+  flex-shrink: 0;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
@@ -156,6 +186,9 @@
   background: var(--bg-elevated);
   color: var(--text-dim);
   text-transform: uppercase;
+  min-width: 36px;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 .spaceInactive {

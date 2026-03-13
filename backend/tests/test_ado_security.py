@@ -4,7 +4,6 @@ Covers: SSRF URL validation, token traceback leakage, auth consistency,
 and separate encryption key support.
 """
 
-import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -12,19 +11,11 @@ import pytest_asyncio
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.auth import GITHUB_COOKIE, _sign
+from src.api.auth import GITHUB_COOKIE
 from src.api.schemas import AdoAccountCreate, _is_private_ip
 from src.models.tables import User
 from src.services.crypto import _get_fernet, decrypt_token, encrypt_token
-
-# ── Helpers ──────────────────────────────────────────────────
-
-
-def _make_auth_cookie(user_id: int) -> str:
-    """Create a signed github_user cookie for the given user ID."""
-    expires = int(time.time()) + 3600
-    return _sign(f"{user_id}:{expires}")
-
+from tests.conftest import make_auth_cookie
 
 # ── Fixtures ─────────────────────────────────────────────────
 
@@ -191,7 +182,7 @@ class TestAdoEndpointAuth:
 
     @pytest.mark.asyncio
     async def test_list_returns_200_with_auth(self, client, seed_user):
-        cookie = _make_auth_cookie(seed_user.github_id)
+        cookie = make_auth_cookie(seed_user.github_id)
         resp = await client.get(
             "/api/ado-accounts",
             cookies={GITHUB_COOKIE: cookie},
@@ -210,7 +201,7 @@ class TestTokenLeakage:
     async def test_validate_ado_token_no_chain(self, client, seed_user):
         """The HTTPException raised on validation failure should not chain
         the original exception (which may contain the token)."""
-        cookie = _make_auth_cookie(seed_user.github_id)
+        cookie = make_auth_cookie(seed_user.github_id)
         # Use a valid ADO domain but mock httpx to fail
         with patch("src.api.ado_accounts.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
@@ -235,7 +226,7 @@ class TestTokenLeakage:
     @pytest.mark.asyncio
     async def test_link_success_creates_account(self, client, seed_user):
         """Successful token validation creates an account."""
-        cookie = _make_auth_cookie(seed_user.github_id)
+        cookie = make_auth_cookie(seed_user.github_id)
 
         mock_response = AsyncMock()
         mock_response.raise_for_status = lambda: None

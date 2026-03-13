@@ -34,7 +34,7 @@ function BreakdownTooltip({ breakdown, score, mode }: { breakdown: PriorityBreak
     return (
       <div className={styles.breakdownTooltip}>
         <div className={styles.breakdownTitle}>Score breakdown ({score}/100)</div>
-        <div className={styles.breakdownRow}><span>Approved</span><span>{breakdown.review}/35</span></div>
+        <div className={styles.breakdownRow}><span>Review status</span><span>{breakdown.review}/35</span></div>
         <div className={styles.breakdownRow}><span>CI passing</span><span>{breakdown.ci}/25</span></div>
         <div className={styles.breakdownRow}><span>Clean merge</span><span>{breakdown.mergeable}/15</span></div>
         <div className={styles.breakdownRow}><span>Small diff</span><span>{breakdown.size}/10</span></div>
@@ -93,34 +93,35 @@ function scoreSummaryReview(b: PriorityBreakdown): ScoredPhrase[] {
 function scoreSummaryOwner(b: PriorityBreakdown): ScoredPhrase[] {
   const phrases: ScoredPhrase[] = [];
 
-  // Review state (review field, max 35) — approved = quickest win
-  if (b.review === 35) phrases.push({ text: 'Approved', tip: 'All reviewers approved, ready to ship', impact: 'positive', priority: 9 });
-  else if (b.review === 15) phrases.push({ text: 'Awaiting review', tip: 'No approval yet, waiting on reviewers', impact: 'neutral', priority: 4 });
-  else if (b.review === 0) phrases.push({ text: 'Changes requested', tip: 'A reviewer requested changes, address their feedback', impact: 'negative', priority: 7 });
-
-  // CI status (ci field, max 25) — passing = ready
-  if (b.ci === 25) phrases.push({ text: 'CI passing', tip: 'All checks passing', impact: 'positive', priority: 8 });
-  else if (b.ci === 10) phrases.push({ text: 'CI pending', tip: 'CI checks still running', impact: 'neutral', priority: 4 });
-  else if (b.ci === 0) phrases.push({ text: 'CI failing', tip: 'CI is failing, must be fixed before merge', impact: 'negative', priority: 6 });
-
-  // Mergeable (mergeable field, max 15) — clean = ready
-  if (b.mergeable === 15) phrases.push({ text: 'Clean merge', tip: 'No conflicts, can merge cleanly', impact: 'positive', priority: 7 });
-  else if (b.mergeable === 0) phrases.push({ text: 'Has conflicts', tip: 'Merge conflicts, needs rebase', impact: 'negative', priority: 5 });
-
-  // Ready to merge composite check
+  // Ready to merge composite check (highest actionability)
   if (b.review === 35 && b.ci === 25 && b.mergeable === 15) {
     phrases.push({ text: 'Ready to merge!', tip: 'Approved, CI passing, clean merge, ship it!', impact: 'positive', priority: 10 });
   }
 
-  // Size (size field, max 10) — small = quick
-  if (b.size >= 8) phrases.push({ text: 'Small diff', tip: 'Small change, quick to merge', impact: 'positive', priority: 2 });
-  else if (b.size === 0) phrases.push({ text: 'Very large diff', tip: 'Over 1000 lines changed', impact: 'negative', priority: 3 });
+  // Review state (review field, max 35)
+  if (b.review === 35) phrases.push({ text: 'Approved', tip: 'All reviewers approved, ready to ship', impact: 'positive', priority: 5 });
+  else if (b.review === 20) phrases.push({ text: 'In review', tip: 'Reviewers have commented but not yet approved', impact: 'positive', priority: 2 });
+  else if (b.review === 10) phrases.push({ text: 'Awaiting review', tip: 'No reviews yet, waiting on reviewers', impact: 'neutral', priority: 1 });
+  else if (b.review === 0) phrases.push({ text: 'Changes requested', tip: 'A reviewer requested changes, address their feedback', impact: 'negative', priority: 9 });
 
-  // New feedback (rebase field, max 5)
-  if (b.rebase === 5) phrases.push({ text: 'New feedback', tip: 'Someone left review comments', impact: 'neutral', priority: 6 });
+  // New feedback (rebase field, max 5) — actionable, read & respond
+  if (b.rebase === 5) phrases.push({ text: 'New feedback', tip: 'Someone left review comments', impact: 'positive', priority: 8 });
 
-  const order: Record<ScoreImpact, number> = { positive: 0, neutral: 1, negative: 2 };
-  phrases.sort((a, b) => order[a.impact] - order[b.impact] || b.priority - a.priority);
+  // CI status (ci field, max 25)
+  if (b.ci === 25) phrases.push({ text: 'CI passing', tip: 'All checks passing', impact: 'positive', priority: 4 });
+  else if (b.ci === 10) phrases.push({ text: 'CI pending', tip: 'CI checks still running', impact: 'neutral', priority: 1 });
+  else if (b.ci === 0) phrases.push({ text: 'CI failing', tip: 'CI is failing, must be fixed before merge', impact: 'negative', priority: 7 });
+
+  // Mergeable (mergeable field, max 15)
+  if (b.mergeable === 15) phrases.push({ text: 'Clean merge', tip: 'No conflicts, can merge cleanly', impact: 'positive', priority: 3 });
+  else if (b.mergeable === 0) phrases.push({ text: 'Has conflicts', tip: 'Merge conflicts, needs rebase', impact: 'negative', priority: 6 });
+
+  // Size (size field, max 10) — informational
+  if (b.size >= 8) phrases.push({ text: 'Small diff', tip: 'Small change, quick to merge', impact: 'positive', priority: 0 });
+  else if (b.size === 0) phrases.push({ text: 'Very large diff', tip: 'Over 1000 lines changed', impact: 'negative', priority: 0 });
+
+  // Sort by actionability (priority), not by badge color
+  phrases.sort((a, b) => b.priority - a.priority);
   return phrases.slice(0, 4);
 }
 
@@ -164,12 +165,12 @@ function ScoringGuide({ open, onToggle, mode }: { open: boolean; onToggle: () =>
               <table className={styles.guideTable}>
                 <thead><tr><th>Signal</th><th>Max</th><th>Logic</th></tr></thead>
                 <tbody>
-                  <tr><td>Approved</td><td>35</td><td>Approved (35), reviewed/none (15), changes requested (0)</td></tr>
+                  <tr><td>Review status</td><td>35</td><td>Approved (35), in review (20), awaiting review (10), changes requested (0)</td></tr>
                   <tr><td>CI passing</td><td>25</td><td>Passing (25), pending (10), unknown (5), failing (0)</td></tr>
                   <tr><td>Clean merge</td><td>15</td><td>Clean (15), unstable (8), conflicts (0)</td></tr>
                   <tr><td>Small diff</td><td>10</td><td>Smaller PRs score higher, quick wins first</td></tr>
                   <tr><td>Age</td><td>10</td><td>Older PRs rise in priority (linear over 7 days)</td></tr>
-                  <tr><td>New feedback</td><td>5</td><td>Has review comments (5), none (0)</td></tr>
+                  <tr><td>New feedback</td><td>5</td><td>Has unaddressed review comments (5), none or already responded (0)</td></tr>
                 </tbody>
               </table>
               <p>PRs closest to being done rank highest. A ready-to-merge PR (approved + CI passing + clean merge) scores ~85+, while a PR with failing CI and conflicts scores ~20. Draft PRs are excluded entirely.</p>
@@ -180,12 +181,12 @@ function ScoringGuide({ open, onToggle, mode }: { open: boolean; onToggle: () =>
               <table className={styles.guideTable}>
                 <thead><tr><th>Signal</th><th>Max</th><th>Logic</th></tr></thead>
                 <tbody>
-                  <tr><td>Approved</td><td>35</td><td>Approved (35), reviewed/none (15), changes requested (0)</td></tr>
+                  <tr><td>Review status</td><td>35</td><td>Approved (35), in review (20), awaiting review (10), changes requested (0)</td></tr>
                   <tr><td>CI passing</td><td>25</td><td>Passing (25), pending (10), unknown (5), failing (0)</td></tr>
                   <tr><td>Clean merge</td><td>15</td><td>Clean (15), unstable (8), conflicts (0)</td></tr>
                   <tr><td>Small diff</td><td>10</td><td>Smaller PRs score higher, quick wins first</td></tr>
                   <tr><td>Age</td><td>10</td><td>Older PRs rise in priority (linear over 7 days)</td></tr>
-                  <tr><td>Bonus</td><td>5</td><td>+5 if rebased since approval or has new feedback</td></tr>
+                  <tr><td>Bonus</td><td>5</td><td>+5 if rebased since approval or has unaddressed feedback</td></tr>
                 </tbody>
               </table>
             </>
@@ -200,7 +201,7 @@ function ScoringGuide({ open, onToggle, mode }: { open: boolean; onToggle: () =>
 }
 
 export function PrioritizeView() {
-  const { selectedPrNumber, selectPr, selectedRepoId, setSelectedRepoId, prioritizeMode: mode, setPrioritizeMode: setMode, prioritizeRepoId: filterRepoId, setPrioritizeRepoId: setFilterRepoId } = useStore();
+  const { selectedPrNumber, selectPr, selectedRepoId, setSelectedRepoId, prioritizeMode: mode, setPrioritizeMode: setMode, prioritizeRepoId: filterRepoId, setPrioritizeRepoId: setFilterRepoId, hideIdlePRs, setHideIdlePRs } = useStore();
   const { user: currentUser } = useCurrentUser();
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
@@ -255,9 +256,17 @@ export function PrioritizeView() {
     return idMap;
   }, [repos]);
 
+  // Clear stale repo filter if the repo no longer exists
+  const validFilterRepoId = filterRepoId && repos?.some((r) => r.id === filterRepoId) ? filterRepoId : undefined;
+  useEffect(() => {
+    if (filterRepoId && repos && !repos.some((r) => r.id === filterRepoId)) {
+      setFilterRepoId(undefined);
+    }
+  }, [filterRepoId, repos, setFilterRepoId]);
+
   const { data: items, isLoading } = useQuery({
-    queryKey: ['prioritized', filterRepoId, currentUser ? mode : 'default'],
-    queryFn: () => api.listPrioritized(filterRepoId, currentUser ? mode : undefined),
+    queryKey: ['prioritized', validFilterRepoId, currentUser ? mode : 'default'],
+    queryFn: () => api.listPrioritized(validFilterRepoId, currentUser ? mode : undefined),
     refetchInterval: 30_000,
   });
 
@@ -267,7 +276,26 @@ export function PrioritizeView() {
     : items?.[0]?.mode === 'all' ? 'all'
     : null;
 
-  const prs = items || [];
+  const allPrs = items || [];
+
+  // Filter idle PRs when toggle is active
+  const prs = useMemo(() => {
+    if (!hideIdlePRs || activeMode === 'all' || !activeMode) return allPrs;
+    return allPrs.filter((p) => {
+      const b = p.priority_breakdown;
+      if (activeMode === 'review') {
+        // Idle in review mode: I reviewed, nothing changed (ball in author's court)
+        return b.review !== 0;
+      }
+      if (activeMode === 'owner') {
+        // Idle in owner mode: no changes requested, not approved, no new feedback, CI not failing
+        // i.e., just waiting with nothing to do
+        const noActionNeeded = b.review > 0 && b.review < 35 && b.rebase === 0 && b.ci > 0;
+        return !noActionNeeded;
+      }
+      return true;
+    });
+  }, [allPrs, hideIdlePRs, activeMode]);
 
   const prById = useMemo(() => {
     const map = new Map<number, PrioritizedPR>();
@@ -281,11 +309,14 @@ export function PrioritizeView() {
   const summaryBar = (() => {
     if (activeMode === 'review') {
       const quickWins = prs.filter((p) => p.priority_breakdown.size >= 12 && p.priority_score >= 40).length;
+      const filteredLabel = hideIdlePRs && prs.length !== allPrs.length
+        ? `${prs.length} of ${allPrs.length}`
+        : String(prs.length);
       return (
         <div className={styles.summaryBar}>
           <Tooltip text="PRs where you're a requested reviewer or have unfinished reviews" position="bottom">
             <span className={styles.summaryItem}>
-              <span className={styles.summaryCount}>{prs.length}</span> to review
+              <span className={styles.summaryCount}>{filteredLabel}</span> to review
             </span>
           </Tooltip>
           <Tooltip text="Small PRs (≤200 lines) with a score above 40, easy to knock out" position="bottom">
@@ -300,11 +331,14 @@ export function PrioritizeView() {
       const readyToMerge = prs.filter((p) => p.priority_breakdown.review === 35 && p.priority_breakdown.ci === 25 && p.priority_breakdown.mergeable === 15).length;
       const needAction = prs.filter((p) => p.priority_breakdown.review === 0 || p.priority_breakdown.ci === 0 || p.priority_breakdown.mergeable === 0).length;
       const unsubmittedComments = prs.filter((p) => p.pr.commenters_without_review?.length > 0).length;
+      const filteredLabel = hideIdlePRs && prs.length !== allPrs.length
+        ? `${prs.length} of ${allPrs.length}`
+        : String(prs.length);
       return (
         <div className={styles.summaryBar}>
           <Tooltip text="Your open PRs across tracked repos" position="bottom">
             <span className={styles.summaryItem}>
-              <span className={styles.summaryCount}>{prs.length}</span> open
+              <span className={styles.summaryCount}>{filteredLabel}</span> open
             </span>
           </Tooltip>
           <Tooltip text="Approved, CI passing, no conflicts" position="bottom">
@@ -397,6 +431,17 @@ export function PrioritizeView() {
                 All PRs
               </button>
             </div>
+          )}
+
+          {/* Actionable only toggle - only in review/owner modes */}
+          {currentUser && activeMode && activeMode !== 'all' && (
+            <button
+              className={`${styles.actionableToggle} ${hideIdlePRs ? styles.actionableToggleActive : ''}`}
+              onClick={() => setHideIdlePRs(!hideIdlePRs)}
+            >
+              <span className={`${styles.toggleDot} ${hideIdlePRs ? styles.toggleDotActive : ''}`} />
+              Actionable only
+            </button>
           )}
 
           {/* Repo filter */}

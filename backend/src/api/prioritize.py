@@ -180,6 +180,8 @@ def compute_quickest_win_score(
     created_at: datetime,
     rebased_since_approval: bool = False,
     has_commenters_without_review: bool = False,
+    author_last_commented_at: datetime | None = None,
+    latest_review_at: datetime | None = None,
 ) -> tuple[int, PriorityBreakdown]:
     """Quickest-win scoring (max 100): PRs closest to being done rank highest.
 
@@ -187,8 +189,14 @@ def compute_quickest_win_score(
     Rewards positive state (approved, CI passing, clean merge).
     """
     # Review state (max 35) — approved = closest to done
-    review_scores = {"approved": 35, "reviewed": 15, "none": 15, "changes_requested": 0}
-    review_pts = review_scores.get(review_state, 15)
+    review_scores = {
+        "approved": 35,
+        "mixed": 20,
+        "reviewed": 20,
+        "none": 10,
+        "changes_requested": 0,
+    }
+    review_pts = review_scores.get(review_state, 10)
 
     # CI status (max 25) — passing = ready to ship
     ci_scores = {"success": 25, "pending": 10, "unknown": 5, "failure": 0}
@@ -215,7 +223,16 @@ def compute_quickest_win_score(
 
     # Bonus signal (max 5) — context-dependent:
     # owner mode uses feedback (reviewed state), default mode uses rebase status
-    feedback_pts = 5 if review_state == "reviewed" else 0
+    feedback_pts = 0
+    if review_state == "reviewed":
+        if (
+            author_last_commented_at
+            and latest_review_at
+            and author_last_commented_at > latest_review_at
+        ):
+            feedback_pts = 0  # Author already responded to feedback
+        else:
+            feedback_pts = 5
     rebase_pts = 5 if rebased_since_approval else 0
     bonus_pts = max(feedback_pts, rebase_pts)
 
@@ -453,6 +470,10 @@ async def list_prioritized(
                 author_last_commented_at=pr.author_last_commented_at,
             )
         else:
+            # Compute latest review timestamp for feedback suppression
+            review_times = [r.submitted_at for r in (pr.reviews or []) if r.submitted_at]
+            latest_review_at = max(review_times) if review_times else None
+
             score, breakdown = compute_quickest_win_score(
                 review_state=review_state,
                 ci_status=ci_status,
@@ -461,6 +482,8 @@ async def list_prioritized(
                 created_at=pr.created_at,
                 rebased_since_approval=_rebased_since_approval(pr),
                 has_commenters_without_review=len(_commenters_without_review(pr)) > 0,
+                author_last_commented_at=pr.author_last_commented_at,
+                latest_review_at=latest_review_at,
             )
 
         scored.append(

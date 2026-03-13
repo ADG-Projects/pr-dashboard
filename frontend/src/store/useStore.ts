@@ -74,6 +74,10 @@ interface AppState {
   prioritizeRepoId: number | undefined;
   setPrioritizeRepoId: (id: number | undefined) => void;
 
+  /** Actionable-only filter for prioritize view */
+  hideIdlePRs: boolean;
+  setHideIdlePRs: (hide: boolean) => void;
+
   /** Sidebar collapsed */
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
@@ -156,6 +160,16 @@ export const useStore = create<AppState>((set) => ({
       else localStorage.removeItem('prioritizeRepoId');
     } catch {}
     return { prioritizeRepoId: id };
+  }),
+
+  hideIdlePRs: (() => {
+    try {
+      return localStorage.getItem('hideIdlePRs') === 'true';
+    } catch { return false; }
+  })(),
+  setHideIdlePRs: (hide) => set(() => {
+    try { localStorage.setItem('hideIdlePRs', String(hide)); } catch {}
+    return { hideIdlePRs: hide };
   }),
 
   sidebarCollapsed: false,

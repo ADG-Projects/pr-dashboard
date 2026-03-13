@@ -35,7 +35,7 @@ Built for teams that work with stacked PRs across multiple GitHub orgs and want 
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/ADG-Projects/pr-dashboard.git
+git clone https://github.com/thomast8/pr-dashboard.git
 cd pr-dashboard
 cp .env.example .env
 # Edit .env with your database URL and (optionally) OAuth credentials

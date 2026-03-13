@@ -98,6 +98,12 @@ class Settings(BaseSettings):
         default="http://localhost:5173", description="Frontend URL for redirects"
     )
 
+    # GitHub Enterprise (for SSRF protection on base_url)
+    allowed_ghe_domains: str = Field(
+        default="",
+        description="Comma-separated allowed GHE domains",
+    )
+
     # Dev mode
     dev_mode: bool = Field(default=False, description="Enable dev-only features (impersonation)")
     dev_alice_token: str = Field(default="", description="GitHub PAT for Alice dev user")

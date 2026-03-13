@@ -29,9 +29,50 @@ class SpaceOut(BaseModel):
     github_account_login: str | None = None
 
 
+_ALLOWED_GITHUB_DOMAINS = {"api.github.com", "github.com"}
+
+
 class GitHubAccountCreate(BaseModel):
     token: str
     base_url: str = "https://api.github.com"
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, v: str) -> str:
+        parsed = urlparse(v.rstrip("/"))
+
+        # Require https in production, allow http in dev mode
+        allowed_schemes = {"https", "http"} if settings.dev_mode else {"https"}
+        if parsed.scheme not in allowed_schemes:
+            raise ValueError(f"base_url must use {' or '.join(allowed_schemes)} scheme")
+
+        if not parsed.hostname:
+            raise ValueError("base_url must have a valid hostname")
+
+        # Block private/reserved IP ranges (SSRF protection)
+        if _is_private_ip(parsed.hostname):
+            raise ValueError("base_url must not point to a private or reserved IP address")
+
+        # Check against allowed domains
+        hostname = parsed.hostname.lower()
+        allowed = _ALLOWED_GITHUB_DOMAINS.copy()
+
+        # Add user-configured GHE domains
+        ghe_domains = settings.allowed_ghe_domains.strip()
+        if ghe_domains:
+            for domain in ghe_domains.split(","):
+                domain = domain.strip().lower()
+                if domain:
+                    allowed.add(domain)
+
+        if not any(hostname == d or hostname.endswith(f".{d}") for d in allowed):
+            raise ValueError(
+                f"base_url must be a recognized GitHub domain "
+                f"({', '.join(sorted(allowed))}). "
+                f"Configure ALLOWED_GHE_DOMAINS for GitHub Enterprise."
+            )
+
+        return v
 
 
 class AddSpaceRequest(BaseModel):

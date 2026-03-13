@@ -273,13 +273,13 @@ async def github_oauth_callback(code: str, state: str, request: Request) -> Redi
             headers={"Accept": "application/json"},
         )
         if resp.status_code != 200:
-            logger.error(f"GitHub OAuth token exchange failed: {resp.text}")
+            logger.error(f"GitHub OAuth token exchange failed with status {resp.status_code}")
             return RedirectResponse(url=f"{base}/?error=token_exchange_failed")
 
         token_data = resp.json()
         access_token = token_data.get("access_token")
         if not access_token:
-            logger.error(f"No access_token in response: {token_data}")
+            logger.error(f"No access_token in response keys: {list(token_data.keys())}")
             return RedirectResponse(url=f"{base}/?error=no_token")
 
         # Fetch user info

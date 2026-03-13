@@ -289,6 +289,10 @@
 .addReviewerSearchWrap {
   padding: 0.4rem 0.5rem;
   border-bottom: 1px solid var(--border-default);
+  position: sticky;
+  top: 0;
+  background: var(--bg-surface);
+  z-index: 1;
 }
 
 .addReviewerSearchInput {

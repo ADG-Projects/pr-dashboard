@@ -26,12 +26,6 @@ function timeAgo(dateStr: string | null): string {
   return `${Math.floor(months / 12)}y ago`;
 }
 
-function healthColor(repo: RepoSummary): string {
-  if (repo.failing_ci_count > 0) return 'var(--ci-fail)';
-  if (repo.stale_pr_count > 0) return 'var(--ci-pending)';
-  return 'var(--ci-pass)';
-}
-
 function RepoBrowser({ space, onClose }: { space: Space; onClose: () => void }) {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
@@ -386,7 +380,7 @@ export function OrgOverview() {
                   } position="right">
                     <span
                       className={styles.healthDot}
-                      style={{ background: repo.last_synced_at ? healthColor(repo) : 'var(--text-dim)' }}
+                      style={{ background: repo.last_synced_at ? color : 'var(--text-dim)' }}
                     />
                   </Tooltip>
                   <span className={styles.repoName} style={{ color }}>{repo.full_name.split('/').pop()}</span>

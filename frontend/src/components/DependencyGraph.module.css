@@ -34,7 +34,7 @@
   background: var(--bg-surface);
   border: 2px solid var(--border-default);
   border-radius: var(--radius-lg);
-  padding: 0.4rem 0.6rem;
+  padding: 0.5rem 0.75rem;
   cursor: pointer;
   z-index: 2;
   user-select: none;
@@ -82,7 +82,7 @@
 }
 
 .cardAuthor {
-  font-size: 0.62rem;
+  font-size: 0.7rem;
   color: var(--text-dim);
   font-weight: 400;
   white-space: nowrap;
@@ -91,8 +91,8 @@
 }
 
 .draftBadge {
-  font-size: 0.48rem;
-  padding: 1px 4px;
+  font-size: 0.55rem;
+  padding: 1px 5px;
   border-radius: 3px;
   background: var(--ci-neutral);
   color: #fff;
@@ -102,8 +102,8 @@
 }
 
 .mergedBadge {
-  font-size: 0.48rem;
-  padding: 1px 4px;
+  font-size: 0.55rem;
+  padding: 1px 5px;
   border-radius: 3px;
   background: #8b5cf6;
   color: #fff;
@@ -113,9 +113,9 @@
 }
 
 .cardTitle {
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   color: var(--text-secondary);
-  line-height: 1.3;
+  line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -188,7 +188,7 @@
 .cardDiff {
   margin-left: auto;
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.7rem;
 }
 .add { color: var(--accent-green-dim); margin-right: 0.2rem; }
 .del { color: var(--accent-red); }
@@ -257,36 +257,30 @@
   width: auto;
 }
 
-/* Standalone PRs grid */
+/* Standalone / Individual PRs list */
 .standaloneSection {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
-  padding-left: 20px;
   border-top: 1px solid var(--border-default);
 }
 
-.standaloneLabel {
-  font-size: 0.72rem;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 0.5rem;
-}
-
-.standaloneGrid {
+/* PR list container — card grid for individual PRs */
+.prList {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 10px;
+  padding-left: 20px;
 }
 
+/* Standalone card — like .card but flow-positioned */
 .standaloneCard {
   position: relative;
-  width: 210px;
-  height: 140px;
+  width: 260px;
+  min-height: 140px;
   background: var(--bg-surface);
   border: 2px solid var(--border-default);
   border-radius: var(--radius-lg);
-  padding: 0.4rem 0.6rem;
+  padding: 0.5rem 0.75rem;
   cursor: pointer;
   user-select: none;
   transition: border-color var(--transition-normal), box-shadow var(--transition-normal), transform 0.12s, opacity 0.3s;
@@ -297,18 +291,6 @@
 .standaloneCard:hover {
   border-color: var(--accent-blue);
   box-shadow: 0 3px 12px rgba(97, 218, 251, 0.1);
-}
-
-.standaloneCard.cardSelected {
-  border-color: var(--accent-blue);
-  box-shadow: 0 0 0 2px rgba(97, 218, 251, 0.25), 0 4px 16px rgba(97, 218, 251, 0.12);
-}
-
-.standaloneCard.cardDimmed {
-  opacity: 0.2;
-}
-.standaloneCard.cardDimmed:hover {
-  opacity: 0.55;
 }
 
 /* Review state card styling — uses unified review tokens */
@@ -371,6 +353,45 @@
   font-weight: 600;
   text-transform: lowercase;
   white-space: nowrap;
+}
+
+/* Review state text badges */
+.reviewBadge {
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-left: auto;
+}
+.reviewBadgeGreen { background: rgba(74, 222, 128, 0.15); color: var(--accent-green); }
+.reviewBadgeRed { background: rgba(248, 113, 113, 0.15); color: var(--accent-red); }
+.reviewBadgeAmber { background: rgba(251, 191, 36, 0.15); color: var(--accent-amber); }
+.reviewBadgeBlue { background: rgba(88, 166, 255, 0.12); color: var(--accent-blue); }
+.reviewBadgeDim { background: rgba(108, 117, 125, 0.15); color: var(--text-dim); }
+
+/* CI text badges */
+.ciBadge {
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ciBadgeGreen { background: rgba(74, 222, 128, 0.15); color: var(--accent-green); }
+.ciBadgeRed { background: rgba(248, 113, 113, 0.15); color: var(--accent-red); }
+.ciBadgeAmber { background: rgba(251, 191, 36, 0.15); color: var(--accent-amber); }
+.ciBadgeDim { background: rgba(108, 117, 125, 0.15); color: var(--text-dim); }
+
+/* Section header for stacks / individual PRs */
+.sectionHeader {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.5rem;
+  padding-left: 20px;
 }
 
 .badgeWarn {

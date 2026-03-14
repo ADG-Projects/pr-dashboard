@@ -7,7 +7,6 @@
 
 import { useMemo, useRef, useCallback, useState, useEffect } from 'react';
 import type { PRSummary, Stack } from '../api/client';
-import { StatusDot } from './StatusDot';
 import { Tooltip } from './Tooltip';
 import styles from './DependencyGraph.module.css';
 
@@ -27,7 +26,7 @@ interface Props {
   onToggleStackCollapsed: (stackId: number) => void;
 }
 
-const CARD_W = 210;
+const CARD_W = 260;
 const CARD_H = 140;
 const GAP_X = 50;
 const GAP_Y = 30;
@@ -54,25 +53,12 @@ interface StackLabel {
 
 const LABEL_H = 24;
 
-/** Format status strings: "changes_requested" -> "Changes Requested" */
-function formatStatus(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 const REVIEW_TOOLTIPS: Record<string, string> = {
   approved: 'All reviewers approved',
   changes_requested: 'Changes requested by reviewer(s)',
   mixed: 'Has both approvals and unresolved change requests',
   reviewed: 'Reviewed, but no approval or change request yet',
   none: 'No reviews yet',
-};
-
-const MERGEABLE_TOOLTIPS: Record<string, string> = {
-  clean: 'No merge conflicts',
-  dirty: 'Has merge conflicts',
-  blocked: 'Blocked from merging',
-  unstable: 'Mergeable but CI failing',
-  unknown: 'Merge status unknown',
 };
 
 /** Compute priority score (0-100) matching backend compute_priority_score logic. */
@@ -405,9 +391,26 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
               <span className={styles.cardAuthor}>{nameMap?.get(pr.author)?.displayName || pr.author}</span>
             </>
           )}
+          {/* Review state text badge */}
+          {(() => {
+            const reviewBadgeMap: Record<string, { label: string; cls: string }> = {
+              approved: { label: 'Approved', cls: styles.reviewBadgeGreen },
+              changes_requested: { label: 'Changes requested', cls: styles.reviewBadgeRed },
+              mixed: { label: 'Mixed', cls: styles.reviewBadgeAmber },
+              reviewed: { label: 'In review', cls: styles.reviewBadgeBlue },
+              none: { label: 'No reviews', cls: styles.reviewBadgeDim },
+            };
+            const badge = reviewBadgeMap[pr.review_state];
+            if (!badge) return null;
+            return (
+              <Tooltip text={REVIEW_TOOLTIPS[pr.review_state] || ''} position="top">
+                <span className={`${styles.reviewBadge} ${badge.cls}`}>{badge.label}</span>
+              </Tooltip>
+            );
+          })()}
           {pr.manual_priority === 'high' && <Tooltip text="High priority" position="top"><span className={styles.priorityHighBadge}>{'\u2191'}</span></Tooltip>}
           {pr.manual_priority === 'low' && <Tooltip text="Low priority" position="top"><span className={styles.priorityLowBadge}>{'\u2193'}</span></Tooltip>}
-          {pr.draft && <Tooltip text="Draft PR — not ready for merge" position="top"><span className={styles.draftBadge}>Draft</span></Tooltip>}
+          {pr.draft && <Tooltip text="Draft PR - not ready for merge" position="top"><span className={styles.draftBadge}>Draft</span></Tooltip>}
           {pr.merged_at && <Tooltip text={`Merged ${new Date(pr.merged_at).toLocaleDateString()}`} position="top"><span className={styles.mergedBadge}>Merged</span></Tooltip>}
         </div>
         <div className={styles.cardTitle}>{pr.title}</div>
@@ -459,17 +462,20 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
           )}
         </div>
         <div className={styles.cardFooter}>
-          <Tooltip text={`CI: ${formatStatus(pr.ci_status)}`} position="top">
-            <StatusDot status={pr.ci_status} size={7} />
-          </Tooltip>
-          <Tooltip text={REVIEW_TOOLTIPS[pr.review_state] || `Review: ${formatStatus(pr.review_state)}`} position="top">
-            <StatusDot status={pr.review_state} size={7} />
-          </Tooltip>
-          <Tooltip text={MERGEABLE_TOOLTIPS[pr.mergeable_state ?? 'unknown'] || `Merge: ${formatStatus(pr.mergeable_state ?? 'unknown')}`} position="top">
-            <StatusDot status={pr.mergeable_state ?? 'unknown'} size={7} />
-          </Tooltip>
+          {/* CI text badge */}
+          {(() => {
+            const ciBadgeMap: Record<string, { label: string; cls: string }> = {
+              success: { label: 'CI passing', cls: styles.ciBadgeGreen },
+              failure: { label: 'CI failing', cls: styles.ciBadgeRed },
+              action_required: { label: 'CI failing', cls: styles.ciBadgeRed },
+              pending: { label: 'CI pending', cls: styles.ciBadgeAmber },
+              unknown: { label: 'CI unknown', cls: styles.ciBadgeDim },
+            };
+            const badge = ciBadgeMap[pr.ci_status] ?? { label: 'CI unknown', cls: styles.ciBadgeDim };
+            return <span className={`${styles.ciBadge} ${badge.cls}`}>{badge.label}</span>;
+          })()}
           {pr.rebased_since_approval && (
-            <Tooltip text="Rebased since approval — re-review may be needed" position="top">
+            <Tooltip text="Rebased since approval - re-review may be needed" position="top">
               <span className={styles.badgeWarn}>!</span>
             </Tooltip>
           )}
@@ -487,6 +493,10 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
   return (
     <div className={styles.graphArea} ref={containerRef}>
       {(layout.length > 0 || stackLabels.length > 0) && (
+        <>
+        {stackLabels.length > 0 && (
+          <div className={styles.sectionHeader}>{stackLabels.length} {stackLabels.length === 1 ? 'Stack' : 'Stacks'}</div>
+        )}
         <div className={styles.graphContainer} style={{ width: svgW, height: svgH }}>
           <svg className={styles.svg} width={svgW} height={svgH}>
             <defs>
@@ -576,14 +586,13 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
             );
           })}
         </div>
+        </>
       )}
 
       {standalones.length > 0 && (
         <div className={styles.standaloneSection}>
-          <Tooltip text="PRs without parent/child dependencies" position="right">
-            <div className={styles.standaloneLabel}>Standalone PRs</div>
-          </Tooltip>
-          <div className={styles.standaloneGrid}>
+          <div className={styles.sectionHeader}>Individual PRs</div>
+          <div className={styles.prList}>
             {standalones.map((pr) => {
               const isSelected = selectedPrNumber === pr.number;
               const dimmed = isDimmed(pr);

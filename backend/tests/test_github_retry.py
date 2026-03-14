@@ -75,22 +75,25 @@ class TestIsSecondaryRateLimit:
 
 
 class TestRetryWaitSeconds:
-    def test_has_retry_after_header(self):
+    def test_has_retry_after_header_larger_than_backoff(self):
+        """Retry-After header wins when larger than computed backoff."""
         resp = _make_response(429, headers={"retry-after": "30"})
-        assert _retry_wait_seconds(resp) == 30.0
+        assert _retry_wait_seconds(resp, attempt=0) == 30.0  # 30 > 5
 
-    def test_retry_after_minimum_one(self):
-        """Retry-After of 0 is clamped to 1."""
-        resp = _make_response(429, headers={"retry-after": "0"})
-        assert _retry_wait_seconds(resp) == 1.0
+    def test_backoff_wins_over_small_retry_after(self):
+        """Backoff wins when Retry-After is smaller."""
+        resp = _make_response(429, headers={"retry-after": "1"})
+        assert _retry_wait_seconds(resp, attempt=1) == 15.0  # 5*3^1 = 15 > 1
 
-    def test_no_header_uses_default(self):
+    def test_no_header_uses_exponential_backoff(self):
         resp = _make_response(429)
-        assert _retry_wait_seconds(resp) == 5  # _DEFAULT_RETRY_WAIT
+        assert _retry_wait_seconds(resp, attempt=0) == 5  # 5 * 3^0
+        assert _retry_wait_seconds(resp, attempt=1) == 15  # 5 * 3^1
+        assert _retry_wait_seconds(resp, attempt=2) == 45  # 5 * 3^2
 
-    def test_invalid_header_uses_default(self):
+    def test_invalid_header_uses_backoff(self):
         resp = _make_response(429, headers={"retry-after": "not-a-number"})
-        assert _retry_wait_seconds(resp) == 5
+        assert _retry_wait_seconds(resp, attempt=0) == 5
 
 
 # ── _request_with_retry ──────────────────────────────

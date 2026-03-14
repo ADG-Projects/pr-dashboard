@@ -150,6 +150,7 @@ class SyncService:
     ) -> None:
         """Sync PRs for a single repo (open, stale, closed, and merged)."""
         logger.info(f"Syncing {owner}/{name}...")
+        github.reset_rate_limited()
         now = datetime.now(UTC)
 
         from src.config.settings import settings
@@ -167,6 +168,10 @@ class SyncService:
 
         async with async_session_factory() as session:
             for gh_pr in all_pulls:
+                if github.rate_limited:
+                    logger.warning(f"  Aborting sync for {owner}/{name}: rate limit exhausted")
+                    break
+
                 pr = await self._upsert_pr(session, repo_id, gh_pr, gh_client=github)
 
                 # Fetch detail, workflow runs, reviews, and comments in parallel

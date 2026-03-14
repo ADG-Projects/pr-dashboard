@@ -1,6 +1,7 @@
 """Async GitHub API client using httpx."""
 
 import asyncio
+import time
 from datetime import datetime
 from typing import Any
 
@@ -8,7 +9,11 @@ import httpx
 from loguru import logger
 
 _MAX_RETRIES = 3
-_DEFAULT_RETRY_WAIT = 5  # seconds
+_BASE_RETRY_WAIT = 5  # seconds
+_RETRY_MULTIPLIER = 3  # exponential backoff multiplier
+_CONCURRENCY_LIMIT = 10  # max concurrent requests
+_MIN_REQUEST_INTERVAL = 0.1  # 100ms between requests
+_RATE_LIMIT_WARNING_THRESHOLD = 200  # warn when remaining drops below this
 
 
 class GitHubAuthError(httpx.HTTPStatusError):
@@ -31,15 +36,16 @@ def _is_secondary_rate_limit(resp: httpx.Response) -> bool:
     return False
 
 
-def _retry_wait_seconds(resp: httpx.Response) -> float:
-    """Extract wait time from Retry-After header, or use default."""
+def _retry_wait_seconds(resp: httpx.Response, attempt: int) -> float:
+    """Compute wait time with exponential backoff, respecting Retry-After header."""
+    backoff = _BASE_RETRY_WAIT * (_RETRY_MULTIPLIER**attempt)
     raw = resp.headers.get("retry-after")
     if raw:
         try:
-            return max(float(raw), 1.0)
+            return max(float(raw), backoff)
         except ValueError:
             pass
-    return _DEFAULT_RETRY_WAIT
+    return backoff
 
 
 def _raise_for_status(resp: httpx.Response) -> None:
@@ -61,6 +67,19 @@ class GitHubClient:
         self._token = token or ""
         self._base_url = base_url.rstrip("/")
         self._client: httpx.AsyncClient | None = None
+        self._semaphore = asyncio.Semaphore(_CONCURRENCY_LIMIT)
+        self._timing_lock = asyncio.Lock()
+        self._last_request_time: float = 0.0
+        self._rate_limited = False
+
+    @property
+    def rate_limited(self) -> bool:
+        """True when retries were exhausted on a rate limit error."""
+        return self._rate_limited
+
+    def reset_rate_limited(self) -> None:
+        """Reset the rate_limited flag (call at the start of each sync)."""
+        self._rate_limited = False
 
     async def _ensure_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -79,6 +98,40 @@ class GitHubClient:
         if self._client and not self._client.is_closed:
             await self._client.aclose()
 
+    async def _throttle(self) -> None:
+        """Ensure minimum interval between requests to avoid secondary rate limits."""
+        async with self._timing_lock:
+            now = time.monotonic()
+            elapsed = now - self._last_request_time
+            if elapsed < _MIN_REQUEST_INTERVAL:
+                await asyncio.sleep(_MIN_REQUEST_INTERVAL - elapsed)
+            self._last_request_time = time.monotonic()
+
+    def _check_rate_limit_headers(self, resp: httpx.Response) -> None:
+        """Monitor primary rate limit from response headers."""
+        remaining_raw = resp.headers.get("x-ratelimit-remaining")
+        reset_raw = resp.headers.get("x-ratelimit-reset")
+        if remaining_raw is None:
+            return
+        try:
+            remaining = int(remaining_raw)
+        except ValueError:
+            return
+        if remaining <= 0 and reset_raw:
+            try:
+                reset_at = int(reset_raw)
+                sleep_for = max(reset_at - time.time() + 1, 1)
+                logger.warning(
+                    f"GitHub primary rate limit exhausted, sleeping {sleep_for:.0f}s until reset"
+                )
+                # Schedule the sleep in the calling coroutine via a flag;
+                # we can't await here since this is sync, so we store it.
+                self._rate_limit_sleep = sleep_for
+            except ValueError:
+                pass
+        elif remaining < _RATE_LIMIT_WARNING_THRESHOLD:
+            logger.warning(f"GitHub rate limit remaining: {remaining}")
+
     async def _request_with_retry(
         self,
         method: str,
@@ -88,37 +141,54 @@ class GitHubClient:
         json: dict[str, Any] | None = None,
         raise_for_status: bool = True,
     ) -> httpx.Response:
-        """Send a request with automatic retry on secondary rate limits and 429s.
+        """Send a request with concurrency limiting, throttling, and retry.
 
         If raise_for_status is False, the raw response is returned without
         checking the status code (caller is responsible for handling errors).
         """
         client = await self._ensure_client()
-        for attempt in range(_MAX_RETRIES):
-            kwargs: dict[str, Any] = {}
-            if params is not None:
-                kwargs["params"] = params
-            if json is not None:
-                kwargs["json"] = json
+        async with self._semaphore:
+            for attempt in range(_MAX_RETRIES):
+                await self._throttle()
 
-            resp = await client.request(method, url, **kwargs)
+                # Check if we need to sleep for primary rate limit reset
+                sleep_needed = getattr(self, "_rate_limit_sleep", None)
+                if sleep_needed:
+                    self._rate_limit_sleep = None
+                    await asyncio.sleep(sleep_needed)
 
-            if resp.status_code == 429 or (
-                resp.status_code == 403 and _is_secondary_rate_limit(resp)
-            ):
-                wait = _retry_wait_seconds(resp)
-                logger.warning(
-                    f"GitHub secondary rate limit hit ({resp.status_code}) for {url}, "
-                    f"retrying in {wait}s (attempt {attempt + 1}/{_MAX_RETRIES})"
-                )
-                if attempt < _MAX_RETRIES - 1:
-                    await asyncio.sleep(wait)
-                    continue
-                # Last attempt exhausted, fall through to raise
+                kwargs: dict[str, Any] = {}
+                if params is not None:
+                    kwargs["params"] = params
+                if json is not None:
+                    kwargs["json"] = json
 
-            if raise_for_status:
-                _raise_for_status(resp)
-            return resp
+                resp = await client.request(method, url, **kwargs)
+                self._check_rate_limit_headers(resp)
+
+                # Handle primary rate limit sleep that was just detected
+                sleep_needed = getattr(self, "_rate_limit_sleep", None)
+                if sleep_needed:
+                    self._rate_limit_sleep = None
+                    await asyncio.sleep(sleep_needed)
+
+                if resp.status_code == 429 or (
+                    resp.status_code == 403 and _is_secondary_rate_limit(resp)
+                ):
+                    wait = _retry_wait_seconds(resp, attempt)
+                    logger.warning(
+                        f"GitHub rate limit hit ({resp.status_code}) for {url}, "
+                        f"retrying in {wait:.0f}s (attempt {attempt + 1}/{_MAX_RETRIES})"
+                    )
+                    if attempt < _MAX_RETRIES - 1:
+                        await asyncio.sleep(wait)
+                        continue
+                    # Last attempt exhausted, mark as rate limited
+                    self._rate_limited = True
+
+                if raise_for_status:
+                    _raise_for_status(resp)
+                return resp
 
         # Should not reach here, but satisfy type checker
         if raise_for_status:

@@ -28,6 +28,26 @@
   font-weight: 600;
 }
 
+.viewToggle {
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-dim);
+  padding: 0.3rem 0.4rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.viewToggle:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-blue);
+}
+.viewToggleActive {
+  color: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+
 .moreFiltersBtn {
   background: none;
   border: 1px dashed var(--border-default);

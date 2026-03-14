@@ -18,6 +18,8 @@ interface Props {
   dimAuthor: string | Set<string> | null;
   dimBranchTarget: string | null;
   dimLabel: string | null;
+  flatView?: boolean;
+  priorityOrderMap?: Map<number, number>;
   selectedPrNumber: number | null;
   onSelectPr: (prNumber: number | null) => void;
   onRenameStack?: (stackId: number, name: string) => void;
@@ -94,7 +96,7 @@ function standalonePriorityScore(pr: PRSummary): number {
   return Math.max(0, reviewPts + ciPts + sizePts + mergeablePts + agePts + rebasePts);
 }
 
-export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogin, dimAuthor, dimBranchTarget, dimLabel, selectedPrNumber, onSelectPr, onRenameStack, nameMap, collapsedStacks, onToggleStackCollapsed }: Props) {
+export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogin, dimAuthor, dimBranchTarget, dimLabel, flatView, priorityOrderMap, selectedPrNumber, onSelectPr, onRenameStack, nameMap, collapsedStacks, onToggleStackCollapsed }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [editingStackId, setEditingStackId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -108,6 +110,23 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
 
   // Build graph edges from head_ref/base_ref
   const { layout, standalones, arrows, stackLabels, svgW, svgH } = useMemo(() => {
+    // Flat view: skip tree layout, sort by backend priority order
+    if (flatView) {
+      const allSorted = [...prs].sort((a, b) => {
+        if (priorityOrderMap) {
+          // Use the backend's pre-sorted order (tier + score + merge position)
+          const posA = priorityOrderMap.get(a.id) ?? Infinity;
+          const posB = priorityOrderMap.get(b.id) ?? Infinity;
+          return posA - posB;
+        }
+        // Fallback to frontend approximation while backend data loads
+        const scoreDiff = standalonePriorityScore(b) - standalonePriorityScore(a);
+        if (scoreDiff !== 0) return scoreDiff;
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      });
+      return { layout: [] as CardPos[], standalones: allSorted, arrows: [] as Arrow[], stackLabels: [] as StackLabel[], svgW: 0, svgH: 0 };
+    }
+
     // Map head_ref -> PR (a PR's head_ref is its branch name)
     const headRefToPr = new Map<string, PRSummary>();
     for (const pr of prs) {
@@ -305,7 +324,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
       svgW: maxX + PAD,
       svgH: maxY + PAD,
     };
-  }, [prs, stacks, highlightedPrIds, collapsedStacks]);
+  }, [prs, stacks, highlightedPrIds, collapsedStacks, flatView, priorityOrderMap]);
 
   const isDimmed = useCallback((pr: PRSummary) => {
     if (highlightedPrIds != null && !highlightedPrIds.has(pr.id)) return true;
@@ -591,7 +610,7 @@ export function DependencyGraph({ prs, stacks, highlightStackId, dimReviewerLogi
 
       {standalones.length > 0 && (
         <div className={styles.standaloneSection}>
-          <div className={styles.sectionHeader}>Individual PRs</div>
+          <div className={styles.sectionHeader}>{flatView ? 'All PRs' : 'Individual PRs'}</div>
           <div className={styles.prList}>
             {standalones.map((pr) => {
               const isSelected = selectedPrNumber === pr.number;

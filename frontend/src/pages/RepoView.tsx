@@ -21,7 +21,7 @@ export function RepoView() {
 
   const repoKey = `${owner}/${name}`;
   const filters = useStore((s) => s.repoFilters[repoKey] ?? DEFAULT_REPO_FILTERS);
-  const { stateFilter, authorFilter, reviewerFilter, ciFilter, branchFilter, priorityFilter, labelFilter, stackFilter, collapsedStacks } = filters;
+  const { stateFilter, authorFilter, reviewerFilter, ciFilter, branchFilter, priorityFilter, labelFilter, stackFilter, collapsedStacks, flatView } = filters;
 
   const setFilter = <K extends keyof typeof filters>(key: K, value: (typeof filters)[K]) =>
     setRepoFilters(repoKey, { [key]: value });
@@ -149,6 +149,22 @@ export function RepoView() {
     queryFn: () => api.listStacks(repo!.id),
     enabled: !!repo,
   });
+
+  // Fetch backend priority scores for flat view sorting
+  const { data: prioritized } = useQuery({
+    queryKey: ['prioritized', repo?.id, 'all'],
+    queryFn: () => api.listPrioritized(repo!.id, 'all'),
+    enabled: !!repo && flatView,
+  });
+  // Map PR id → position in the backend's sorted order (already sorted by tier then score)
+  const priorityOrderMap = useMemo(() => {
+    if (!prioritized) return undefined;
+    const map = new Map<number, number>();
+    for (let i = 0; i < prioritized.length; i++) {
+      map.set(prioritized[i].pr.id, i);
+    }
+    return map;
+  }, [prioritized]);
 
   const { data: team } = useQuery({
     queryKey: ['team'],
@@ -466,50 +482,23 @@ export function RepoView() {
             </div>
           </Tooltip>
 
-          <Tooltip text="Hides non-matching PRs" position="bottom" disabled={ciDropdownOpen}>
-            <div className={styles.filterDropdown} ref={ciDropdownRef}>
+          <Tooltip text="Dims PRs not requesting this reviewer" position="bottom" disabled={reviewerDropdownOpen}>
+            <div className={styles.filterDropdown} ref={reviewerDropdownRef}>
               <button
                 className={styles.filterTrigger}
-                onClick={() => setCiDropdownOpen(!ciDropdownOpen)}
+                onClick={() => setReviewerDropdownOpen(!reviewerDropdownOpen)}
               >
-                {icons.ci}
-                <span>{ciOptions.find((o) => o.value === ciFilter)?.label ?? 'All CI'}</span>
-                <span className={styles.filterChevron}>{ciDropdownOpen ? '\u25B4' : '\u25BE'}</span>
-              </button>
-              {ciDropdownOpen && (
-                <div className={styles.filterMenu}>
-                  {ciOptions.map((o) => (
-                    <div
-                      key={o.value}
-                      className={`${styles.filterMenuItem} ${ciFilter === o.value ? styles.filterMenuItemActive : ''}`}
-                      onClick={() => { setFilter('ciFilter',o.value); setCiDropdownOpen(false); }}
-                    >
-                      <span>{o.label}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </Tooltip>
-
-          {/* Promoted secondary filters (show when active) */}
-          {reviewerFilter && (
-            <Tooltip text="Dims PRs not requesting this reviewer" position="bottom" disabled={reviewerDropdownOpen}>
-              <div className={styles.filterDropdown} ref={reviewerDropdownRef}>
-                <button
-                  className={styles.filterTrigger}
-                  onClick={() => setReviewerDropdownOpen(!reviewerDropdownOpen)}
-                >
-                  {icons.reviewer}
-                  {(() => {
-                    if (reviewerFilter === '__me__') {
-                      return (
-                        <span className={styles.filterOption}>
-                          {currentUser?.avatar_url && <img src={currentUser.avatar_url} alt="Me" className={styles.filterAvatar} />}
-                          <span>Me</span>
-                        </span>
-                      );
-                    }
+                {icons.reviewer}
+                {(() => {
+                  if (reviewerFilter === '__me__') {
+                    return (
+                      <span className={styles.filterOption}>
+                        {currentUser?.avatar_url && <img src={currentUser.avatar_url} alt="Me" className={styles.filterAvatar} />}
+                        <span>Me</span>
+                      </span>
+                    );
+                  }
+                  if (reviewerFilter) {
                     const info = authorInfoMap.get(reviewerFilter);
                     const prData = repoPeopleMap.get(reviewerFilter);
                     const avatar = info?.avatar ?? prData?.avatar ?? null;
@@ -520,41 +509,71 @@ export function RepoView() {
                         <span>{displayName}</span>
                       </span>
                     );
-                  })()}
-                  <span className={styles.filterChevron}>{reviewerDropdownOpen ? '\u25B4' : '\u25BE'}</span>
-                </button>
-                {reviewerDropdownOpen && (
-                  <div className={styles.filterMenu}>
+                  }
+                  return <span>All reviewers</span>;
+                })()}
+                <span className={styles.filterChevron}>{reviewerDropdownOpen ? '\u25B4' : '\u25BE'}</span>
+              </button>
+              {reviewerDropdownOpen && (
+                <div className={styles.filterMenu}>
+                  <div
+                    className={`${styles.filterMenuItem} ${!reviewerFilter ? styles.filterMenuItemActive : ''}`}
+                    onClick={() => { setFilter('reviewerFilter',''); setReviewerDropdownOpen(false); }}
+                  >
+                    <span>All reviewers</span>
+                  </div>
+                  {currentUser && (
                     <div
-                      className={`${styles.filterMenuItem} ${!reviewerFilter ? styles.filterMenuItemActive : ''}`}
-                      onClick={() => { setFilter('reviewerFilter',''); setReviewerDropdownOpen(false); }}
+                      className={`${styles.filterMenuItem} ${reviewerFilter === '__me__' ? styles.filterMenuItemActive : ''}`}
+                      onClick={() => { setFilter('reviewerFilter','__me__'); setReviewerDropdownOpen(false); }}
                     >
-                      <span>All reviewers</span>
+                      {currentUser.avatar_url && <img src={currentUser.avatar_url} alt="Me" className={styles.filterAvatar} />}
+                      <span>Me</span>
                     </div>
-                    {currentUser && (
+                  )}
+                  {reviewers.map((r) => {
+                    const info = authorInfoMap.get(r.login);
+                    const avatar = info?.avatar ?? r.avatar ?? null;
+                    const displayName = info?.displayName ?? r.login;
+                    return (
                       <div
-                        className={`${styles.filterMenuItem} ${reviewerFilter === '__me__' ? styles.filterMenuItemActive : ''}`}
-                        onClick={() => { setFilter('reviewerFilter','__me__'); setReviewerDropdownOpen(false); }}
+                        key={r.login}
+                        className={`${styles.filterMenuItem} ${reviewerFilter === r.login ? styles.filterMenuItemActive : ''}`}
+                        onClick={() => { setFilter('reviewerFilter',r.login); setReviewerDropdownOpen(false); }}
                       >
-                        {currentUser.avatar_url && <img src={currentUser.avatar_url} alt="Me" className={styles.filterAvatar} />}
-                        <span>Me</span>
+                        {avatar && <img src={avatar} alt={r.login} className={styles.filterAvatar} />}
+                        <span>{displayName}</span>
                       </div>
-                    )}
-                    {reviewers.map((r) => {
-                      const info = authorInfoMap.get(r.login);
-                      const avatar = info?.avatar ?? r.avatar ?? null;
-                      const displayName = info?.displayName ?? r.login;
-                      return (
-                        <div
-                          key={r.login}
-                          className={`${styles.filterMenuItem} ${reviewerFilter === r.login ? styles.filterMenuItemActive : ''}`}
-                          onClick={() => { setFilter('reviewerFilter',r.login); setReviewerDropdownOpen(false); }}
-                        >
-                          {avatar && <img src={avatar} alt={r.login} className={styles.filterAvatar} />}
-                          <span>{displayName}</span>
-                        </div>
-                      );
-                    })}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </Tooltip>
+
+          {/* Promoted secondary filters (show when active) */}
+          {ciFilter && (
+            <Tooltip text="Hides non-matching PRs" position="bottom" disabled={ciDropdownOpen}>
+              <div className={styles.filterDropdown} ref={ciDropdownRef}>
+                <button
+                  className={styles.filterTrigger}
+                  onClick={() => setCiDropdownOpen(!ciDropdownOpen)}
+                >
+                  {icons.ci}
+                  <span>{ciOptions.find((o) => o.value === ciFilter)?.label ?? 'All CI'}</span>
+                  <span className={styles.filterChevron}>{ciDropdownOpen ? '\u25B4' : '\u25BE'}</span>
+                </button>
+                {ciDropdownOpen && (
+                  <div className={styles.filterMenu}>
+                    {ciOptions.map((o) => (
+                      <div
+                        key={o.value}
+                        className={`${styles.filterMenuItem} ${ciFilter === o.value ? styles.filterMenuItemActive : ''}`}
+                        onClick={() => { setFilter('ciFilter',o.value); setCiDropdownOpen(false); }}
+                      >
+                        <span>{o.label}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -663,6 +682,20 @@ export function RepoView() {
             </div>
           )}
 
+          {/* View toggle: graph vs flat */}
+          <Tooltip text={flatView ? 'Switch to graph view' : 'Switch to flat view'} position="bottom">
+            <button
+              className={`${styles.viewToggle} ${flatView ? styles.viewToggleActive : ''}`}
+              onClick={() => setFilter('flatView', !flatView)}
+            >
+              {flatView ? (
+                <svg className={styles.filterIcon} viewBox="0 0 16 16"><rect x="1.5" y="2" width="5" height="4" rx="0.8" fill="none" stroke="currentColor" strokeWidth="1.3"/><rect x="9.5" y="2" width="5" height="4" rx="0.8" fill="none" stroke="currentColor" strokeWidth="1.3"/><rect x="1.5" y="10" width="5" height="4" rx="0.8" fill="none" stroke="currentColor" strokeWidth="1.3"/><rect x="9.5" y="10" width="5" height="4" rx="0.8" fill="none" stroke="currentColor" strokeWidth="1.3"/></svg>
+              ) : (
+                <svg className={styles.filterIcon} viewBox="0 0 16 16"><circle cx="8" cy="3" r="1.8" fill="currentColor"/><circle cx="4" cy="13" r="1.8" fill="currentColor"/><circle cx="12" cy="13" r="1.8" fill="currentColor"/><path d="M8 4.8V8L4 11.2M8 8l4 3.2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+              )}
+            </button>
+          </Tooltip>
+
           {/* + Filter button for secondary filters */}
           <button
             className={`${styles.moreFiltersBtn} ${showMoreFilters ? styles.moreFiltersBtnActive : ''}`}
@@ -683,34 +716,19 @@ export function RepoView() {
         {/* Expanded secondary filters */}
         {showMoreFilters && (
           <div className={styles.filters}>
-            {!reviewerFilter && (
-              <Tooltip text="Dims PRs not requesting this reviewer" position="bottom" disabled={reviewerDropdownOpen}>
-                <div className={styles.filterDropdown} ref={reviewerDropdownRef}>
-                  <button className={styles.filterTrigger} onClick={() => setReviewerDropdownOpen(!reviewerDropdownOpen)}>
-                    {icons.reviewer}
-                    <span>All reviewers</span>
-                    <span className={styles.filterChevron}>{reviewerDropdownOpen ? '\u25B4' : '\u25BE'}</span>
+            {!ciFilter && (
+              <Tooltip text="Hides non-matching PRs" position="bottom" disabled={ciDropdownOpen}>
+                <div className={styles.filterDropdown} ref={ciDropdownRef}>
+                  <button className={styles.filterTrigger} onClick={() => setCiDropdownOpen(!ciDropdownOpen)}>
+                    {icons.ci}
+                    <span>All CI</span>
+                    <span className={styles.filterChevron}>{ciDropdownOpen ? '\u25B4' : '\u25BE'}</span>
                   </button>
-                  {reviewerDropdownOpen && (
+                  {ciDropdownOpen && (
                     <div className={styles.filterMenu}>
-                      <div className={`${styles.filterMenuItem} ${!reviewerFilter ? styles.filterMenuItemActive : ''}`} onClick={() => { setFilter('reviewerFilter',''); setReviewerDropdownOpen(false); }}><span>All reviewers</span></div>
-                      {currentUser && (
-                        <div className={`${styles.filterMenuItem} ${reviewerFilter === '__me__' ? styles.filterMenuItemActive : ''}`} onClick={() => { setFilter('reviewerFilter','__me__'); setReviewerDropdownOpen(false); }}>
-                          {currentUser.avatar_url && <img src={currentUser.avatar_url} alt="Me" className={styles.filterAvatar} />}
-                          <span>Me</span>
-                        </div>
-                      )}
-                      {reviewers.map((r) => {
-                        const info = authorInfoMap.get(r.login);
-                        const avatar = info?.avatar ?? r.avatar ?? null;
-                        const displayName = info?.displayName ?? r.login;
-                        return (
-                          <div key={r.login} className={`${styles.filterMenuItem} ${reviewerFilter === r.login ? styles.filterMenuItemActive : ''}`} onClick={() => { setFilter('reviewerFilter',r.login); setReviewerDropdownOpen(false); }}>
-                            {avatar && <img src={avatar} alt={r.login} className={styles.filterAvatar} />}
-                            <span>{displayName}</span>
-                          </div>
-                        );
-                      })}
+                      {ciOptions.map((o) => (
+                        <div key={o.value} className={`${styles.filterMenuItem} ${ciFilter === o.value ? styles.filterMenuItemActive : ''}`} onClick={() => { setFilter('ciFilter',o.value); setCiDropdownOpen(false); }}><span>{o.label}</span></div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -815,6 +833,8 @@ export function RepoView() {
             dimAuthor={authorFilter === '__me__' ? myLogins : authorFilter || null}
             dimBranchTarget={branchFilter || null}
             dimLabel={labelFilter || null}
+            flatView={flatView}
+            priorityOrderMap={priorityOrderMap}
             selectedPrNumber={selectedPrNumber}
             onSelectPr={selectPr}
             onRenameStack={(stackId, name) => renameMutation.mutate({ stackId, name })}

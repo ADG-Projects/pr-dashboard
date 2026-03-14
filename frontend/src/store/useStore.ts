@@ -12,6 +12,7 @@ export interface RepoFilters {
   labelFilter: string;
   stackFilter: number | null;
   collapsedStacks: Set<number>;
+  flatView: boolean;
 }
 
 export const DEFAULT_REPO_FILTERS: RepoFilters = {
@@ -24,6 +25,7 @@ export const DEFAULT_REPO_FILTERS: RepoFilters = {
   labelFilter: '',
   stackFilter: null,
   collapsedStacks: new Set(),
+  flatView: false,
 };
 
 function loadPerRepoCollapsed(): Record<string, number[]> {
@@ -42,6 +44,25 @@ function savePerRepoCollapsed(repoFilters: Record<string, RepoFilters>) {
       }
     }
     localStorage.setItem('perRepoCollapsedStacks', JSON.stringify(serializable));
+  } catch {}
+}
+
+function loadPerRepoFlatView(): Record<string, boolean> {
+  try {
+    const stored = localStorage.getItem('perRepoFlatView');
+    return stored ? JSON.parse(stored) : {};
+  } catch { return {}; }
+}
+
+function savePerRepoFlatView(repoFilters: Record<string, RepoFilters>) {
+  try {
+    const serializable: Record<string, boolean> = {};
+    for (const [key, filters] of Object.entries(repoFilters)) {
+      if (filters.flatView) {
+        serializable[key] = true;
+      }
+    }
+    localStorage.setItem('perRepoFlatView', JSON.stringify(serializable));
   } catch {}
 }
 
@@ -90,9 +111,15 @@ function getRepoFilters(state: AppState, repoKey: string): RepoFilters {
 export const useStore = create<AppState>((set) => ({
   repoFilters: (() => {
     const collapsed = loadPerRepoCollapsed();
+    const flatViews = loadPerRepoFlatView();
+    const allKeys = new Set([...Object.keys(collapsed), ...Object.keys(flatViews)]);
     const initial: Record<string, RepoFilters> = {};
-    for (const [key, ids] of Object.entries(collapsed)) {
-      initial[key] = { ...DEFAULT_REPO_FILTERS, collapsedStacks: new Set(ids) };
+    for (const key of allKeys) {
+      initial[key] = {
+        ...DEFAULT_REPO_FILTERS,
+        collapsedStacks: new Set(collapsed[key] ?? []),
+        flatView: flatViews[key] ?? false,
+      };
     }
     return initial;
   })(),
@@ -102,6 +129,7 @@ export const useStore = create<AppState>((set) => ({
     const updated = { ...current, ...filters };
     const next = { ...s.repoFilters, [repoKey]: updated };
     if ('collapsedStacks' in filters) savePerRepoCollapsed(next);
+    if ('flatView' in filters) savePerRepoFlatView(next);
     return { repoFilters: next };
   }),
 
@@ -109,7 +137,7 @@ export const useStore = create<AppState>((set) => ({
     const current = getRepoFilters(s, repoKey);
     const next = {
       ...s.repoFilters,
-      [repoKey]: { ...DEFAULT_REPO_FILTERS, collapsedStacks: current.collapsedStacks },
+      [repoKey]: { ...DEFAULT_REPO_FILTERS, collapsedStacks: current.collapsedStacks, flatView: current.flatView },
     };
     return { repoFilters: next };
   }),

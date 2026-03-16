@@ -28,6 +28,7 @@ class FakePR:
     reviews: list = field(default_factory=list)
     github_requested_reviewers: list = field(default_factory=list)
     author_last_commented_at: datetime | None = None
+    author: str = "other-user"
 
 
 # ── _compute_age_pts ──────────────────────────────────
@@ -174,6 +175,20 @@ class TestIsMyReview:
         """My alternate login is in requested reviewers."""
         pr = FakePR(github_requested_reviewers=[{"login": "my-work"}])
         assert _is_my_review(pr, {"me", "my-work"}) is True
+
+    def test_self_authored_pr_excluded(self):
+        """My own PRs never appear in my review queue."""
+        pr = FakePR(
+            author="me",
+            github_requested_reviewers=[{"login": "me"}],
+            reviews=[FakeReview("me", "COMMENTED", commit_id="abc")],
+        )
+        assert _is_my_review(pr, {"me"}) is False
+
+    def test_self_authored_pr_excluded_alt_login(self):
+        """My own PR via alternate login is also excluded."""
+        pr = FakePR(author="my-work", github_requested_reviewers=[{"login": "me"}])
+        assert _is_my_review(pr, {"me", "my-work"}) is False
 
 
 # ── compute_review_score ──────────────────────────────

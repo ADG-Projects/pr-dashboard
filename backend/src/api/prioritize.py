@@ -75,6 +75,10 @@ def _is_my_review(pr: PullRequest, user_logins: set[str]) -> bool:
     - I've submitted reviews on this PR but haven't approved it yet
       (commenting removes you from requested reviewers, but you're still a reviewer)
     """
+    # Never show my own PRs in my review queue
+    if pr.author in user_logins:
+        return False
+
     # Explicitly requested
     if any(r.get("login") in user_logins for r in (pr.github_requested_reviewers or [])):
         return True

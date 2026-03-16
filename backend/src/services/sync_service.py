@@ -126,7 +126,10 @@ class SyncService:
                 synced = False
                 for i, gh in enumerate(clients):
                     try:
-                        await self.sync_repo(repo.id, repo.owner, repo.name, gh)
+                        if repo.github_webhook_id is not None:
+                            await self.sync_repo_lightweight(repo.id, repo.owner, repo.name, gh)
+                        else:
+                            await self.sync_repo(repo.id, repo.owner, repo.name, gh)
                         synced = True
                         break
                     except GitHubAuthError as exc:
@@ -533,6 +536,129 @@ class SyncService:
             {"repo_id": repo_id, "owner": owner, "name": name},
         )
         logger.info(f"  Sync complete for {owner}/{name}")
+
+    async def sync_repo_lightweight(
+        self,
+        repo_id: int,
+        owner: str,
+        name: str,
+        github: GitHubClient,
+    ) -> None:
+        """Lightweight sync for webhook-active repos: list-level upsert + stale detection only.
+
+        Skips all detail fetches (get_pull, reviews, comments, workflow runs) since
+        webhooks deliver those updates instantly. Still does ETag list fetches to catch
+        any missed webhook deliveries and detect stale PRs.
+        """
+        logger.info(f"Lightweight syncing {owner}/{name} (webhook active)...")
+        github.reset_rate_limited()
+        now = datetime.now(UTC)
+
+        from src.config.settings import settings
+
+        open_etag_key = f"{owner}/{name}/pulls/open"
+        closed_etag_key = f"{owner}/{name}/pulls/closed"
+
+        gh_pulls, new_open_etag, open_modified = await github.list_open_pulls_with_etag(
+            owner, name, etag=self._etag_cache.get(open_etag_key)
+        )
+        if new_open_etag:
+            self._etag_cache[open_etag_key] = new_open_etag
+
+        cutoff = now - timedelta(days=settings.merged_pr_lookback_days)
+        (
+            closed_pulls,
+            new_closed_etag,
+            closed_modified,
+        ) = await github.list_recently_closed_pulls_with_etag(
+            owner, name, cutoff, etag=self._etag_cache.get(closed_etag_key)
+        )
+        if new_closed_etag:
+            self._etag_cache[closed_etag_key] = new_closed_etag
+
+        # Both 304: nothing changed at all
+        if not open_modified and not closed_modified:
+            logger.info(
+                f"  No changes detected (ETag 304) for {owner}/{name}, skipping lightweight sync"
+            )
+            async with async_session_factory() as session:
+                repo_obj = await session.get(TrackedRepo, repo_id)
+                if repo_obj:
+                    repo_obj.last_synced_at = now
+                await session.commit()
+            await broadcast_event(
+                "sync_complete",
+                {"repo_id": repo_id, "owner": owner, "name": name},
+            )
+            return
+
+        all_pulls = gh_pulls + closed_pulls
+        fetched_pr_numbers = {gh_pr["number"] for gh_pr in all_pulls}
+        logger.info(
+            f"  Lightweight: {len(gh_pulls)} open, {len(closed_pulls)} closed PRs from list"
+        )
+
+        async with async_session_factory() as session:
+            # Upsert basic PR data from list (no detail fetches)
+            for gh_pr in all_pulls:
+                await self._upsert_pr(session, repo_id, gh_pr, gh_client=github)
+
+            # Stale PR detection: open in DB but not in GitHub's list
+            db_open_prs = (
+                (
+                    await session.execute(
+                        select(PullRequest).where(
+                            PullRequest.repo_id == repo_id,
+                            PullRequest.state == "open",
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            stale_prs = [pr for pr in db_open_prs if pr.number not in fetched_pr_numbers]
+
+            if stale_prs:
+                logger.info(f"  Updating {len(stale_prs)} stale PR(s) for {owner}/{name}")
+                sem = asyncio.Semaphore(5)
+
+                async def fetch_stale(pr_number: int) -> dict | None:
+                    async with sem:
+                        try:
+                            return await github.get_pull(owner, name, pr_number)
+                        except Exception as exc:
+                            logger.warning(f"  Could not fetch stale PR #{pr_number}: {exc}")
+                            return None
+
+                stale_details = await asyncio.gather(*(fetch_stale(pr.number) for pr in stale_prs))
+
+                for pr, detail in zip(stale_prs, stale_details, strict=True):
+                    if detail is None:
+                        continue
+                    pr.state = detail["state"]
+                    pr.merged_at = parse_gh_datetime(detail.get("merged_at"))
+                    pr.updated_at = parse_gh_datetime(detail.get("updated_at")) or datetime.now(UTC)
+                    pr.last_synced_at = datetime.now(UTC)
+
+            repo = await session.get(TrackedRepo, repo_id)
+            if repo:
+                repo.last_synced_at = now
+
+            await session.commit()
+
+            await self._delete_if_orphaned(repo_id, f"{owner}/{name}")
+
+        async with async_session_factory() as session:
+            stacks = await detect_stacks(session, repo_id)
+            await session.commit()
+            if stacks:
+                logger.info(f"  Detected {len(stacks)} stack(s) for {owner}/{name}")
+
+        await broadcast_event(
+            "sync_complete",
+            {"repo_id": repo_id, "owner": owner, "name": name},
+        )
+        logger.info(f"  Lightweight sync complete for {owner}/{name}")
 
     async def sync_single_pr(
         self,

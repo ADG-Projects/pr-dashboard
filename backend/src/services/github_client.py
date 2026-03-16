@@ -139,6 +139,7 @@ class GitHubClient:
         *,
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
+        extra_headers: dict[str, str] | None = None,
         raise_for_status: bool = True,
     ) -> httpx.Response:
         """Send a request with concurrency limiting, throttling, and retry.
@@ -162,6 +163,8 @@ class GitHubClient:
                     kwargs["params"] = params
                 if json is not None:
                     kwargs["json"] = json
+                if extra_headers is not None:
+                    kwargs["headers"] = extra_headers
 
                 resp = await client.request(method, url, **kwargs)
                 self._check_rate_limit_headers(resp)
@@ -199,6 +202,33 @@ class GitHubClient:
         resp = await self._request_with_retry("GET", path, params=params)
         return resp.json()
 
+    async def _get_with_etag(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        etag: str | None = None,
+    ) -> tuple[Any, str | None, bool]:
+        """GET with conditional request via ETag.
+
+        Returns (data, new_etag, was_modified). If the server returns 304,
+        data is None and was_modified is False.
+        """
+        extra_headers: dict[str, str] = {}
+        if etag:
+            extra_headers["If-None-Match"] = etag
+        resp = await self._request_with_retry(
+            "GET",
+            path,
+            params=params,
+            extra_headers=extra_headers or None,
+            raise_for_status=False,
+        )
+        if resp.status_code == 304:
+            return None, etag, False
+        _raise_for_status(resp)
+        new_etag = resp.headers.get("etag")
+        return resp.json(), new_etag, True
+
     async def _get_paginated(
         self, path: str, params: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
@@ -221,6 +251,59 @@ class GitHubClient:
                     url = part.split(";")[0].strip(" <>")
                     break
         return results
+
+    async def _get_paginated_with_etag(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        etag: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None, bool]:
+        """Paginated GET with conditional request on the first page.
+
+        Returns (results, new_etag, was_modified). If the first page returns
+        304 Not Modified, results is [] and was_modified is False.
+        """
+        params = dict(params or {})
+        params.setdefault("per_page", 100)
+        results: list[dict[str, Any]] = []
+
+        extra_headers: dict[str, str] = {}
+        if etag:
+            extra_headers["If-None-Match"] = etag
+
+        # First page with ETag
+        resp = await self._request_with_retry(
+            "GET",
+            path,
+            params=params,
+            extra_headers=extra_headers or None,
+            raise_for_status=False,
+        )
+        if resp.status_code == 304:
+            return [], etag, False
+        _raise_for_status(resp)
+        new_etag = resp.headers.get("etag")
+        results.extend(resp.json())
+
+        # Remaining pages (no ETag, normal fetch)
+        link = resp.headers.get("link", "")
+        url: str | None = None
+        for part in link.split(","):
+            if 'rel="next"' in part:
+                url = part.split(";")[0].strip(" <>")
+                break
+
+        while url:
+            resp = await self._request_with_retry("GET", url)
+            results.extend(resp.json())
+            link = resp.headers.get("link", "")
+            url = None
+            for part in link.split(","):
+                if 'rel="next"' in part:
+                    url = part.split(";")[0].strip(" <>")
+                    break
+
+        return results, new_etag, True
 
     async def _patch(self, path: str, json: dict[str, Any] | None = None) -> Any:
         resp = await self._request_with_retry("PATCH", path, json=json)
@@ -245,6 +328,20 @@ class GitHubClient:
                 "sort": "updated",
                 "direction": "desc",
             },
+        )
+
+    async def list_open_pulls_with_etag(
+        self, owner: str, repo: str, etag: str | None = None
+    ) -> tuple[list[dict[str, Any]], str | None, bool]:
+        """List open PRs with ETag support. Returns (pulls, new_etag, was_modified)."""
+        return await self._get_paginated_with_etag(
+            f"/repos/{owner}/{repo}/pulls",
+            params={
+                "state": "open",
+                "sort": "updated",
+                "direction": "desc",
+            },
+            etag=etag,
         )
 
     async def list_recently_closed_pulls(
@@ -288,6 +385,75 @@ class GitHubClient:
                     break
 
         return results
+
+    async def list_recently_closed_pulls_with_etag(
+        self, owner: str, repo: str, cutoff: datetime, etag: str | None = None
+    ) -> tuple[list[dict[str, Any]], str | None, bool]:
+        """Like list_recently_closed_pulls but with ETag on the first page.
+
+        Returns (results, new_etag, was_modified). A 304 means nothing changed.
+        """
+        params: dict[str, Any] = {
+            "state": "closed",
+            "sort": "updated",
+            "direction": "desc",
+            "per_page": 100,
+        }
+
+        extra_headers: dict[str, str] = {}
+        if etag:
+            extra_headers["If-None-Match"] = etag
+
+        path = f"/repos/{owner}/{repo}/pulls"
+        resp = await self._request_with_retry(
+            "GET",
+            path,
+            params=params,
+            extra_headers=extra_headers or None,
+            raise_for_status=False,
+        )
+        if resp.status_code == 304:
+            return [], etag, False
+        _raise_for_status(resp)
+        new_etag = resp.headers.get("etag")
+
+        results: list[dict[str, Any]] = []
+        page: list[dict[str, Any]] = resp.json()
+        if not page:
+            return results, new_etag, True
+
+        for pr in page:
+            updated = parse_gh_datetime(pr.get("updated_at"))
+            if updated and updated < cutoff:
+                return results, new_etag, True
+            results.append(pr)
+
+        # Remaining pages (no ETag)
+        link = resp.headers.get("link", "")
+        url: str | None = None
+        for part in link.split(","):
+            if 'rel="next"' in part:
+                url = part.split(";")[0].strip(" <>")
+                break
+
+        while url:
+            resp = await self._request_with_retry("GET", url)
+            page = resp.json()
+            if not page:
+                break
+            for pr in page:
+                updated = parse_gh_datetime(pr.get("updated_at"))
+                if updated and updated < cutoff:
+                    return results, new_etag, True
+                results.append(pr)
+            link = resp.headers.get("link", "")
+            url = None
+            for part in link.split(","):
+                if 'rel="next"' in part:
+                    url = part.split(";")[0].strip(" <>")
+                    break
+
+        return results, new_etag, True
 
     async def get_pull(self, owner: str, repo: str, number: int) -> dict[str, Any]:
         """Get full PR detail (includes mergeable_state, diff stats)."""

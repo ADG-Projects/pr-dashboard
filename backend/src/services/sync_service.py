@@ -40,6 +40,10 @@ class SyncService:
         self.interval = interval_seconds
         self._task: asyncio.Task[None] | None = None
         self._running = False
+        # ETag cache for list endpoints, keyed by "{owner}/{name}/{endpoint}"
+        self._etag_cache: dict[str, str] = {}
+        # Cache of user logins we already attempted to fetch a name for
+        self._user_name_fetch_attempted: set[str] = set()
 
     async def start(self) -> None:
         """Start the background sync loop."""
@@ -94,6 +98,13 @@ class SyncService:
 
     async def sync_all(self) -> None:
         """Run one full sync cycle across all active tracked repos."""
+        from src.config.settings import settings
+
+        # Budget check: skip cycle if rate limit is too low
+        budget_ok = await self._check_rate_limit_budget(settings.rate_limit_min_remaining)
+        if not budget_ok:
+            return
+
         async with async_session_factory() as session:
             repos = (
                 (await session.execute(select(TrackedRepo).where(TrackedRepo.is_active.is_(True))))
@@ -141,6 +152,41 @@ class SyncService:
                 for gh in clients:
                     await gh.close()
 
+    async def _check_rate_limit_budget(self, min_remaining: int) -> bool:
+        """Check GitHub rate limit before syncing. Returns False if budget is too low.
+
+        Uses the first available client to call /rate_limit (this endpoint is free).
+        """
+        async with async_session_factory() as session:
+            repos = (
+                (await session.execute(select(TrackedRepo).where(TrackedRepo.is_active.is_(True))))
+                .scalars()
+                .all()
+            )
+            for repo in repos:
+                clients = await self._resolve_clients_for_repo(session, repo.id)
+                if clients:
+                    try:
+                        data = await clients[0].get_rate_limit()
+                        core = data.get("resources", {}).get("core", {})
+                        remaining = core.get("remaining", 9999)
+                        limit = core.get("limit", 5000)
+                        logger.info(f"Rate limit: {remaining}/{limit} remaining")
+                        if remaining < min_remaining:
+                            logger.warning(
+                                f"Rate limit too low ({remaining} < {min_remaining}), "
+                                f"skipping sync cycle"
+                            )
+                            return False
+                        return True
+                    except Exception:
+                        logger.debug("Could not check rate limit, proceeding with sync")
+                        return True
+                    finally:
+                        for c in clients:
+                            await c.close()
+        return True
+
     async def sync_repo(
         self,
         repo_id: int,
@@ -155,26 +201,97 @@ class SyncService:
 
         from src.config.settings import settings
 
-        gh_pulls = await github.list_open_pulls(owner, name)
-        logger.info(f"  Found {len(gh_pulls)} open PRs")
+        # Use ETag caching: 304 Not Modified responses don't count against rate limit
+        open_etag_key = f"{owner}/{name}/pulls/open"
+        closed_etag_key = f"{owner}/{name}/pulls/closed"
 
-        # Fetch recently closed/merged PRs so they appear even after a DB wipe
+        gh_pulls, new_open_etag, open_modified = await github.list_open_pulls_with_etag(
+            owner, name, etag=self._etag_cache.get(open_etag_key)
+        )
+        if new_open_etag:
+            self._etag_cache[open_etag_key] = new_open_etag
+
         cutoff = now - timedelta(days=settings.merged_pr_lookback_days)
-        closed_pulls = await github.list_recently_closed_pulls(owner, name, cutoff)
+        (
+            closed_pulls,
+            new_closed_etag,
+            closed_modified,
+        ) = await github.list_recently_closed_pulls_with_etag(
+            owner, name, cutoff, etag=self._etag_cache.get(closed_etag_key)
+        )
+        if new_closed_etag:
+            self._etag_cache[closed_etag_key] = new_closed_etag
+
+        # If both lists returned 304, nothing changed at all - skip detail fetches
+        if not open_modified and not closed_modified:
+            logger.info(f"  No changes detected (ETag 304) for {owner}/{name}, skipping details")
+            async with async_session_factory() as session:
+                repo_obj = await session.get(TrackedRepo, repo_id)
+                if repo_obj:
+                    repo_obj.last_synced_at = now
+                await session.commit()
+            await broadcast_event(
+                "sync_complete",
+                {"repo_id": repo_id, "owner": owner, "name": name},
+            )
+            return
+
+        logger.info(f"  Found {len(gh_pulls)} open PRs")
         logger.info(f"  Found {len(closed_pulls)} recently closed PRs")
 
         all_pulls = gh_pulls + closed_pulls
         fetched_pr_numbers = {gh_pr["number"] for gh_pr in all_pulls}
 
         async with async_session_factory() as session:
+            # Load existing PRs to detect which ones actually changed
+            existing_prs = (
+                await session.execute(
+                    select(
+                        PullRequest.number,
+                        PullRequest.updated_at,
+                        PullRequest.head_sha,
+                    ).where(PullRequest.repo_id == repo_id)
+                )
+            ).all()
+            db_pr_state = {row.number: (row.updated_at, row.head_sha) for row in existing_prs}
+
+            changed_open: list[dict] = []
+            changed_closed: list[dict] = []
+            unchanged_open: list[dict] = []
+            unchanged_closed_count = 0
             for gh_pr in all_pulls:
+                pr_num = gh_pr["number"]
+                gh_updated = parse_gh_datetime(gh_pr.get("updated_at"))
+                gh_head_sha = gh_pr["head"]["sha"]
+                db_state = db_pr_state.get(pr_num)
+                is_changed = (
+                    db_state is None or db_state[0] != gh_updated or db_state[1] != gh_head_sha
+                )
+                is_open = gh_pr["state"] == "open"
+                if is_changed and is_open:
+                    changed_open.append(gh_pr)
+                elif is_changed:
+                    changed_closed.append(gh_pr)
+                elif is_open:
+                    unchanged_open.append(gh_pr)
+                else:
+                    unchanged_closed_count += 1
+
+            logger.info(
+                f"  {len(changed_open)} changed open, "
+                f"{len(changed_closed)} changed closed, "
+                f"{len(unchanged_open)} unchanged open, "
+                f"{unchanged_closed_count} unchanged closed (skipped)"
+            )
+
+            # --- Full fetch for changed open PRs (5 endpoints) ---
+            for gh_pr in changed_open:
                 if github.rate_limited:
                     logger.warning(f"  Aborting sync for {owner}/{name}: rate limit exhausted")
                     break
 
                 pr = await self._upsert_pr(session, repo_id, gh_pr, gh_client=github)
 
-                # Fetch detail, workflow runs, reviews, and comments in parallel
                 (
                     detail_result,
                     runs_result,
@@ -224,7 +341,6 @@ class SyncService:
                 else:
                     await self._upsert_reviews(session, pr.id, reviews_result, gh_client=github)
 
-                # Extract unique commenters (excluding PR author) and track author's latest comment
                 commenter_logins: set[str] = set()
                 pr_author = gh_pr["user"]["login"]
                 author_last_commented_at: datetime | None = None
@@ -247,6 +363,118 @@ class SyncService:
                             commenter_logins.add(login)
                 pr.commenters = sorted(commenter_logins)
                 pr.author_last_commented_at = author_last_commented_at
+
+            # --- Reduced fetch for changed closed/merged PRs ---
+            # No CI fetch (irrelevant for closed). Skip get_pull if already
+            # in DB (diff stats don't change after close).
+            for gh_pr in changed_closed:
+                if github.rate_limited:
+                    logger.warning(f"  Aborting sync for {owner}/{name}: rate limit exhausted")
+                    break
+
+                already_in_db = gh_pr["number"] in db_pr_state
+                pr = await self._upsert_pr(session, repo_id, gh_pr, gh_client=github)
+
+                coros: list = []
+                coro_names: list[str] = []
+                if not already_in_db:
+                    coros.append(github.get_pull(owner, name, gh_pr["number"]))
+                    coro_names.append("detail")
+                coros.append(github.get_reviews(owner, name, gh_pr["number"]))
+                coro_names.append("reviews")
+                coros.append(github.get_issue_comments(owner, name, gh_pr["number"]))
+                coro_names.append("issue_comments")
+                coros.append(github.get_review_comments(owner, name, gh_pr["number"]))
+                coro_names.append("review_comments")
+
+                results = await asyncio.gather(*coros, return_exceptions=True)
+                result_map = dict(zip(coro_names, results, strict=True))
+
+                if "detail" in result_map:
+                    detail_result = result_map["detail"]
+                    if isinstance(detail_result, Exception):
+                        logger.warning(
+                            f"  Could not fetch detail for PR #{gh_pr['number']}: {detail_result}"
+                        )
+                    else:
+                        pr.additions = detail_result.get("additions", 0)
+                        pr.deletions = detail_result.get("deletions", 0)
+                        pr.changed_files = detail_result.get("changed_files", 0)
+                        pr.mergeable_state = detail_result.get("mergeable_state")
+                        pr.commit_count = detail_result.get("commits", 0)
+
+                reviews_result = result_map["reviews"]
+                if isinstance(reviews_result, Exception):
+                    logger.warning(
+                        f"  Could not fetch reviews for PR #{gh_pr['number']}: {reviews_result}"
+                    )
+                else:
+                    await self._upsert_reviews(session, pr.id, reviews_result, gh_client=github)
+
+                commenter_logins: set[str] = set()
+                pr_author = gh_pr["user"]["login"]
+                author_last_commented_at: datetime | None = None
+                for key in ("issue_comments", "review_comments"):
+                    comments_result = result_map[key]
+                    if isinstance(comments_result, Exception):
+                        logger.warning(
+                            f"  Could not fetch comments for PR #{gh_pr['number']}: "
+                            f"{comments_result}"
+                        )
+                        continue
+                    for comment in comments_result:
+                        login = comment.get("user", {}).get("login")
+                        if login and login == pr_author:
+                            ts = parse_gh_datetime(comment.get("created_at"))
+                            if ts and (
+                                author_last_commented_at is None or ts > author_last_commented_at
+                            ):
+                                author_last_commented_at = ts
+                        elif login:
+                            commenter_logins.add(login)
+                pr.commenters = sorted(commenter_logins)
+                pr.author_last_commented_at = author_last_commented_at
+
+            # --- Unchanged open PRs: CI-only, no upsert overhead ---
+            # PR data hasn't changed so skip _upsert_pr (avoids redundant
+            # user lookups). Just look up the PR ID and refresh checks.
+            for gh_pr in unchanged_open:
+                if github.rate_limited:
+                    logger.warning(f"  Aborting sync for {owner}/{name}: rate limit exhausted")
+                    break
+
+                existing_pr = (
+                    await session.execute(
+                        select(PullRequest).where(
+                            PullRequest.repo_id == repo_id,
+                            PullRequest.number == gh_pr["number"],
+                        )
+                    )
+                ).scalar_one_or_none()
+                if not existing_pr:
+                    continue
+                existing_pr.last_synced_at = now
+
+                try:
+                    runs_result = await github.get_workflow_runs(owner, name, gh_pr["head"]["sha"])
+                except Exception as exc:
+                    runs_result = exc
+
+                if isinstance(runs_result, Exception):
+                    logger.warning(
+                        f"  Could not fetch workflow runs for PR #{gh_pr['number']}: {runs_result}"
+                    )
+                else:
+                    checks = [
+                        {
+                            "name": r["name"],
+                            "status": r["status"],
+                            "conclusion": r.get("conclusion"),
+                            "details_url": r.get("html_url"),
+                        }
+                        for r in runs_result
+                    ]
+                    await self._upsert_check_runs(session, existing_pr.id, checks)
 
             # Detect stale PRs: open in DB but not returned by GitHub
             db_open_prs = (
@@ -627,7 +855,14 @@ class SyncService:
         return user
 
     async def _fetch_user_name(self, gh_client: GitHubClient, login: str) -> str | None:
-        """Fetch a user's full name from the GitHub API, returning None on failure."""
+        """Fetch a user's full name from the GitHub API, returning None on failure.
+
+        Skips the API call if we already attempted this login (even if the result
+        was None), to avoid repeated calls for users without a public name.
+        """
+        if login in self._user_name_fetch_attempted:
+            return None
+        self._user_name_fetch_attempted.add(login)
         try:
             profile = await gh_client.get_user(login)
             return profile.get("name")

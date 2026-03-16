@@ -76,10 +76,14 @@ class Settings(BaseSettings):
 
     # Sync
     sync_interval_seconds: int = Field(
-        default=180, description="Seconds between GitHub sync cycles"
+        default=300, description="Seconds between GitHub sync cycles"
     )
     merged_pr_lookback_days: int = Field(
         default=7, description="How many days back to fetch closed/merged PRs"
+    )
+    rate_limit_min_remaining: int = Field(
+        default=500,
+        description="Skip sync cycle when GitHub rate limit remaining is below this threshold",
     )
 
     # Auth

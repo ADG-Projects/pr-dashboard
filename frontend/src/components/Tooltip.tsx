@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
 import styles from './Tooltip.module.css';
 
 interface Props {
-  text: string;
+  text: ReactNode;
   children: ReactNode;
   position?: 'top' | 'bottom' | 'left' | 'right';
   style?: CSSProperties;

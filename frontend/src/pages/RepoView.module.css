@@ -16,7 +16,7 @@
 .titleRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 0.75rem;
   margin-bottom: 1rem;
 }
 
@@ -26,6 +26,20 @@
   font-size: 0.8rem;
   color: var(--text-muted);
   font-weight: 600;
+}
+
+.clickableStat {
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  padding: 0.1rem 0.4rem;
+  transition: background var(--transition-fast);
+}
+.clickableStat:hover {
+  background: var(--bg-input);
+}
+.clickableStatActive {
+  background: var(--bg-input);
+  outline: 1px solid var(--border-hover);
 }
 
 .viewToggle {
@@ -294,6 +308,35 @@
 
 .filterMenuItemIndented {
   padding-left: 1rem;
+}
+
+/* Tooltip PR list for stat hovers */
+.tooltipPrList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  white-space: normal;
+}
+
+.tooltipPrItem {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1.35;
+}
+
+.tooltipPrNumber {
+  font-weight: 600;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.tooltipPrTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
 }
 
 /* Small colored dot for repo identity */

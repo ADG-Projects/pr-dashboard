@@ -379,12 +379,52 @@ export function RepoView() {
             <div className={styles.titleStats}>
               <span>{filtered.filter((p: PRSummary) => p.state === 'open').length} open</span>
               {(() => {
-                const approved = filtered.filter((p: PRSummary) => p.review_state === 'approved').length;
-                return approved > 0 ? <span style={{ color: 'var(--accent-green)' }}>{approved} approved</span> : null;
+                const approvedPrs = filtered.filter((p: PRSummary) => p.review_state === 'approved');
+                const approvedActive = stateFilter === 'approved';
+                return approvedPrs.length > 0 ? (
+                  <Tooltip text={
+                    <div className={styles.tooltipPrList}>
+                      {approvedPrs.map(p => (
+                        <div key={p.number} className={styles.tooltipPrItem}>
+                          <span className={styles.tooltipPrNumber}>#{p.number}</span>
+                          <span className={styles.tooltipPrTitle}>{p.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  } position="bottom">
+                    <span
+                      className={`${styles.clickableStat} ${approvedActive ? styles.clickableStatActive : ''}`}
+                      style={{ color: 'var(--accent-green)' }}
+                      onClick={() => setFilter('stateFilter', approvedActive ? 'open' : 'approved')}
+                    >
+                      {approvedPrs.length} approved
+                    </span>
+                  </Tooltip>
+                ) : null;
               })()}
               {(() => {
-                const failing = filtered.filter((p: PRSummary) => p.ci_status === 'failure').length;
-                return failing > 0 ? <span style={{ color: 'var(--accent-red)' }}>{failing} failing</span> : null;
+                const failingPrs = filtered.filter((p: PRSummary) => p.ci_status === 'failure');
+                const failingActive = ciFilter === 'failure';
+                return failingPrs.length > 0 ? (
+                  <Tooltip text={
+                    <div className={styles.tooltipPrList}>
+                      {failingPrs.map(p => (
+                        <div key={p.number} className={styles.tooltipPrItem}>
+                          <span className={styles.tooltipPrNumber}>#{p.number}</span>
+                          <span className={styles.tooltipPrTitle}>{p.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  } position="bottom">
+                    <span
+                      className={`${styles.clickableStat} ${failingActive ? styles.clickableStatActive : ''}`}
+                      style={{ color: 'var(--accent-red)' }}
+                      onClick={() => setFilter('ciFilter', failingActive ? '' : 'failure')}
+                    >
+                      {failingPrs.length} failing
+                    </span>
+                  </Tooltip>
+                ) : null;
               })()}
             </div>
           )}

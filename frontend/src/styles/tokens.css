@@ -1,14 +1,15 @@
 /* Design tokens — ported from async-migration-graph.html dark theme */
 :root {
+  color-scheme: dark;
   /* Background layers */
-  --bg-base: #1a1a2e;
+  --bg-base: #101b30;
   --bg-surface: #16213e;
-  --bg-elevated: #1e2040;
-  --bg-input: #1a1a2e;
+  --bg-elevated: #1c2840;
+  --bg-input: #101b30;
 
   /* Borders */
-  --border-default: #2a2a4a;
-  --border-hover: #4a4a6a;
+  --border-default: #1e2d4a;
+  --border-hover: #3a4d6a;
   --border-active: #61dafb;
 
   /* Text */

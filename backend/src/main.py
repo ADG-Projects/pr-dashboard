@@ -54,7 +54,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="PR Dashboard",
     description="GitHub PR management dashboard for organizations",
-    version="1.14.1",
+    version="1.14.2",
     lifespan=lifespan,
 )
 

@@ -62,38 +62,6 @@ def _github_error_detail(exc: Exception) -> str:
 router = APIRouter(prefix="/api/repos/{repo_id}", tags=["pulls"])
 
 
-async def _get_github_client_for_pr(
-    session: AsyncSession, repo_id: int
-) -> tuple[GitHubClient, TrackedRepo]:
-    """Resolve the GitHub token for a tracked repo via its trackers and return a client + repo."""
-    repo = await session.get(TrackedRepo, repo_id)
-    if not repo:
-        raise HTTPException(status_code=404, detail="Repo not found")
-
-    # Try each tracker's space → github_account for a valid token
-    trackers = (
-        (
-            await session.execute(
-                select(RepoTracker)
-                .options(selectinload(RepoTracker.space).selectinload(Space.github_account))
-                .where(RepoTracker.repo_id == repo_id)
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-    for tracker in trackers:
-        if tracker.space and tracker.space.github_account:
-            account = tracker.space.github_account
-            if account.encrypted_token:
-                token = decrypt_token(account.encrypted_token)
-                if token:
-                    return GitHubClient(token=token, base_url=account.base_url), repo
-
-    raise HTTPException(status_code=400, detail="No GitHub token available for this repo")
-
-
 async def _get_github_client_for_user(
     session: AsyncSession, repo_id: int, user_id: int
 ) -> tuple[GitHubClient, TrackedRepo]:
@@ -683,6 +651,7 @@ async def update_labels(
     repo_id: int,
     number: int,
     body: LabelUpdate,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> PRSummary:
     """Add or remove labels on a PR - syncs to GitHub."""
@@ -704,7 +673,10 @@ async def update_labels(
     if not pr:
         raise HTTPException(status_code=404, detail=f"PR #{number} not found")
 
-    gh, repo = await _get_github_client_for_pr(session, repo_id)
+    user_id = get_github_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    gh, repo = await _get_github_client_for_user(session, repo_id, user_id)
     try:
         for label_name in body.add:
             info = ALLOWED_LABELS[label_name]

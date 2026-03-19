@@ -115,7 +115,7 @@ async def test_add_valid_label(authed_client, setup):
     repo = setup["repo"]
     pr = setup["pr"]
 
-    with patch("src.api.pulls._get_github_client_for_pr", new_callable=AsyncMock) as mock_get_gh:
+    with patch("src.api.pulls._get_github_client_for_user", new_callable=AsyncMock) as mock_get_gh:
         mock_gh = AsyncMock()
         mock_get_gh.return_value = (mock_gh, repo)
 
@@ -139,7 +139,7 @@ async def test_remove_label(authed_client, setup):
     repo = setup["repo"]
     pr = setup["pr"]
 
-    with patch("src.api.pulls._get_github_client_for_pr", new_callable=AsyncMock) as mock_get_gh:
+    with patch("src.api.pulls._get_github_client_for_user", new_callable=AsyncMock) as mock_get_gh:
         mock_gh = AsyncMock()
         mock_get_gh.return_value = (mock_gh, repo)
 
@@ -183,7 +183,7 @@ async def test_add_and_remove_in_same_request(authed_client, setup):
     repo = setup["repo"]
     pr = setup["pr"]
 
-    with patch("src.api.pulls._get_github_client_for_pr", new_callable=AsyncMock) as mock_get_gh:
+    with patch("src.api.pulls._get_github_client_for_user", new_callable=AsyncMock) as mock_get_gh:
         mock_gh = AsyncMock()
         mock_get_gh.return_value = (mock_gh, repo)
 

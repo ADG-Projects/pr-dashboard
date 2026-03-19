@@ -358,7 +358,7 @@ async def test_label_error_surfaces_github_detail(reviewer_client, reviewer_setu
     mock_resp = _make_response(404, json_body={"message": "Not Found"})
     gh_error = httpx.HTTPStatusError("404", request=mock_resp.request, response=mock_resp)
 
-    with patch("src.api.pulls._get_github_client_for_pr", new_callable=AsyncMock) as mock_get_gh:
+    with patch("src.api.pulls._get_github_client_for_user", new_callable=AsyncMock) as mock_get_gh:
         mock_gh = AsyncMock()
         mock_gh.ensure_label.side_effect = gh_error
         mock_get_gh.return_value = (mock_gh, repo)

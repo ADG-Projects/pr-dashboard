@@ -82,6 +82,12 @@ class GitHubAccount(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    token_status: Mapped[str] = mapped_column(String(30), nullable=False, server_default="ok")
+    token_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    token_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     user: Mapped["User"] = relationship(back_populates="github_accounts")
     spaces: Mapped[list["Space"]] = relationship(back_populates="github_account")
 
@@ -117,6 +123,13 @@ class TrackedRepo(Base):
     default_branch: Mapped[str] = mapped_column(String(255), default="main")
     github_webhook_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_sync_error_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_successful_sync_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     trackers: Mapped[list["RepoTracker"]] = relationship(

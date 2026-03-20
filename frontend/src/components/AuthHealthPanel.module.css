@@ -1,0 +1,230 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  width: 480px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.header h2 {
+  font-size: 0.95rem;
+  color: var(--accent-gold);
+  margin: 0;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0 0.3rem;
+}
+.closeBtn:hover {
+  color: var(--text-primary);
+}
+
+.body {
+  padding: 1rem 1.25rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 1rem;
+}
+
+.allGood {
+  color: var(--ci-pass, #3fb950);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 1.5rem 1rem;
+}
+
+.section {
+  margin-top: 1rem;
+}
+
+.sectionTitle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.5rem;
+}
+
+.card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.cardCritical {
+  border-color: rgba(215, 58, 74, 0.3);
+  background: rgba(215, 58, 74, 0.05);
+}
+
+.cardWarning {
+  border-color: rgba(227, 155, 0, 0.3);
+  background: rgba(227, 155, 0, 0.05);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.login {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.badge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.badgeCritical {
+  background: rgba(215, 58, 74, 0.15);
+  color: var(--ci-fail, #d73a4a);
+}
+
+.badgeWarning {
+  background: rgba(227, 155, 0, 0.15);
+  color: var(--ci-pending, #e39b00);
+}
+
+.error {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+  word-break: break-word;
+  max-height: 3rem;
+  overflow: hidden;
+}
+
+.meta {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-bottom: 0.4rem;
+}
+
+.repoList {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.4rem;
+}
+
+.repoListLabel {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.repoChip {
+  font-size: 0.72rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  padding: 0.1rem 0.35rem;
+  color: var(--text-muted);
+}
+
+.remediation {
+  margin-top: 0.5rem;
+}
+
+.remediationBtn {
+  display: inline-block;
+  font-size: 0.78rem;
+  color: var(--accent-gold);
+  text-decoration: none;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--accent-gold);
+  border-radius: var(--radius-md);
+}
+.remediationBtn:hover {
+  background: rgba(255, 215, 0, 0.1);
+}
+
+.remediationText {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.repoCard {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-default);
+}
+.repoCard:last-child {
+  border-bottom: none;
+}
+
+.repoName {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.footer {
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--border-default);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.checkBtn {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.checkBtn:hover {
+  background: var(--bg-surface);
+  border-color: var(--accent-gold);
+}
+.checkBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.checkError {
+  font-size: 0.75rem;
+  color: var(--ci-fail, #d73a4a);
+  margin-right: auto;
+}

@@ -403,6 +403,11 @@ export function OrgOverview() {
                       <span className={styles.cardTime}>{timeAgo(repo.last_synced_at)}</span>
                     </Tooltip>
                   )}
+                  {repo.last_sync_error && (
+                    <Tooltip text={`Not syncing: ${repo.last_sync_error}`} position="top">
+                      <span className={styles.syncWarning}>{'\u26A0'}</span>
+                    </Tooltip>
+                  )}
                 </div>
                 {/* Health bar */}
                 {repo.last_synced_at ? (() => {

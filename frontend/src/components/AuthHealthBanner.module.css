@@ -1,0 +1,44 @@
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  animation: fadeIn 0.3s ease;
+}
+
+.critical {
+  background: rgba(215, 58, 74, 0.12);
+  color: var(--ci-fail, #d73a4a);
+  border-bottom: 1px solid rgba(215, 58, 74, 0.25);
+}
+
+.warning {
+  background: rgba(227, 155, 0, 0.12);
+  color: var(--ci-pending, #e39b00);
+  border-bottom: 1px solid rgba(227, 155, 0, 0.25);
+}
+
+.icon {
+  font-size: 0.9rem;
+}
+
+.link {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: inherit;
+  padding: 0;
+}
+
+.link:hover {
+  opacity: 0.8;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

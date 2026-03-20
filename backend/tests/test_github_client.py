@@ -5,7 +5,13 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from src.services.github_client import GitHubClient, parse_gh_datetime
+from src.services.github_client import (
+    AuthErrorType,
+    GitHubAuthError,
+    GitHubClient,
+    _raise_for_status,
+    parse_gh_datetime,
+)
 
 
 def _mock_response(status_code: int = 200, json_data=None, headers=None):
@@ -39,6 +45,77 @@ class TestParseGhDatetime:
 
     def test_empty_string_returns_none(self):
         assert parse_gh_datetime("") is None
+
+
+class TestRaiseForStatus:
+    """Tests for _raise_for_status error classification."""
+
+    def test_401_bad_credentials_classified_as_token_expired(self):
+        resp = _mock_response(401, json_data={"message": "Bad credentials"})
+        with pytest.raises(GitHubAuthError) as exc_info:
+            _raise_for_status(resp)
+        assert exc_info.value.error_type == AuthErrorType.token_expired
+
+    def test_401_revoked_classified_as_token_revoked(self):
+        resp = _mock_response(401, json_data={"message": "Token has been revoked"})
+        with pytest.raises(GitHubAuthError) as exc_info:
+            _raise_for_status(resp)
+        assert exc_info.value.error_type == AuthErrorType.token_revoked
+
+    def test_403_saml_classified_as_sso_required(self):
+        resp = _mock_response(403, json_data={"message": "Resource protected by SAML enforcement"})
+        with pytest.raises(GitHubAuthError) as exc_info:
+            _raise_for_status(resp)
+        assert exc_info.value.error_type == AuthErrorType.sso_required
+
+    def test_403_sso_classified_as_sso_required(self):
+        resp = _mock_response(403, json_data={"message": "SSO authorization required"})
+        with pytest.raises(GitHubAuthError) as exc_info:
+            _raise_for_status(resp)
+        assert exc_info.value.error_type == AuthErrorType.sso_required
+
+    def test_403_scope_classified_as_insufficient_scope(self):
+        resp = _mock_response(
+            403, json_data={"message": "Insufficient permissions for this resource"}
+        )
+        with pytest.raises(GitHubAuthError) as exc_info:
+            _raise_for_status(resp)
+        assert exc_info.value.error_type == AuthErrorType.insufficient_scope
+
+    def test_403_generic_classified_as_insufficient_scope(self):
+        resp = _mock_response(403, json_data={"message": "Forbidden"})
+        with pytest.raises(GitHubAuthError) as exc_info:
+            _raise_for_status(resp)
+        assert exc_info.value.error_type == AuthErrorType.insufficient_scope
+
+    def test_403_rate_limit_not_raised_as_auth_error(self):
+        resp = _mock_response(
+            403,
+            json_data={"message": "API rate limit exceeded"},
+            headers={"retry-after": "60"},
+        )
+        # Should NOT raise GitHubAuthError for rate limits
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            _raise_for_status(resp)
+        assert not isinstance(exc_info.value, GitHubAuthError)
+
+    def test_403_abuse_rate_limit_not_raised_as_auth_error(self):
+        resp = _mock_response(
+            403, json_data={"message": "You have exceeded a secondary rate limit"}
+        )
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            _raise_for_status(resp)
+        assert not isinstance(exc_info.value, GitHubAuthError)
+
+    def test_200_does_not_raise(self):
+        resp = _mock_response(200, json_data={"ok": True})
+        _raise_for_status(resp)  # should not raise
+
+    def test_404_raises_generic_http_error(self):
+        resp = _mock_response(404, json_data={"message": "Not Found"})
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            _raise_for_status(resp)
+        assert not isinstance(exc_info.value, GitHubAuthError)
 
 
 class TestGitHubClient:

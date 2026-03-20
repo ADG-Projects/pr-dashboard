@@ -58,6 +58,8 @@ export interface RepoSummary {
   is_active: boolean;
   default_branch: string;
   last_synced_at: string | null;
+  last_sync_error: string | null;
+  last_successful_sync_at: string | null;
   open_pr_count: number;
   failing_ci_count: number;
   stale_pr_count: number;
@@ -247,6 +249,38 @@ export interface ReleaseInfo {
   tag_name: string | null;
 }
 
+export interface Remediation {
+  action: string;
+  label: string;
+  url?: string | null;
+  description: string;
+}
+
+export interface AuthHealthAccount {
+  id: number;
+  login: string;
+  token_status: string;
+  token_error: string | null;
+  token_checked_at: string | null;
+  affected_repos: string[];
+  remediation: Remediation;
+}
+
+export interface AuthHealthRepo {
+  id: number;
+  full_name: string;
+  last_sync_error: string | null;
+  last_sync_error_at: string | null;
+  last_successful_sync_at: string | null;
+  remediation: Remediation;
+}
+
+export interface AuthHealthResponse {
+  has_issues: boolean;
+  accounts: AuthHealthAccount[];
+  stale_repos: AuthHealthRepo[];
+}
+
 // ── API functions ────────────────────────────────
 
 export const api = {
@@ -420,6 +454,9 @@ export const api = {
   getGitHubUser: () => request<GitHubUser | null>('/api/auth/user'),
   disconnectGitHub: () =>
     request('/api/auth/github/disconnect', { method: 'POST' }),
+  authHealth: () => request<AuthHealthResponse>('/api/auth/health'),
+  authHealthCheck: () =>
+    request<AuthHealthResponse>('/api/auth/health/check', { method: 'POST' }),
 
   // Dev mode
   devListUsers: () => request<GitHubUser[]>('/api/auth/dev-users'),

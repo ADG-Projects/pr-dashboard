@@ -112,6 +112,8 @@ class RepoSummary(BaseModel):
     is_active: bool
     default_branch: str
     last_synced_at: datetime | None
+    last_sync_error: str | None = None
+    last_successful_sync_at: datetime | None = None
     open_pr_count: int = 0
     failing_ci_count: int = 0
     stale_pr_count: int = 0

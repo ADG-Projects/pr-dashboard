@@ -1,6 +1,7 @@
 """Async GitHub API client using httpx."""
 
 import asyncio
+import enum
 import time
 from datetime import datetime
 from typing import Any
@@ -16,8 +17,30 @@ _MIN_REQUEST_INTERVAL = 0.1  # 100ms between requests
 _RATE_LIMIT_WARNING_THRESHOLD = 200  # warn when remaining drops below this
 
 
+class AuthErrorType(str, enum.Enum):
+    """Classification of GitHub authentication/authorization errors."""
+
+    token_expired = "token_expired"
+    token_revoked = "token_revoked"
+    insufficient_scope = "insufficient_scope"
+    sso_required = "sso_required"
+    decrypt_failed = "decrypt_failed"
+    repo_not_accessible = "repo_not_accessible"
+
+
 class GitHubAuthError(httpx.HTTPStatusError):
     """Raised when GitHub returns 401/403 (bad token, insufficient permissions, etc.)."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        request: httpx.Request,
+        response: httpx.Response,
+        error_type: AuthErrorType = AuthErrorType.insufficient_scope,
+    ) -> None:
+        super().__init__(message, request=request, response=response)
+        self.error_type = error_type
 
 
 def _is_secondary_rate_limit(resp: httpx.Response) -> bool:
@@ -48,14 +71,52 @@ def _retry_wait_seconds(resp: httpx.Response, attempt: int) -> float:
     return backoff
 
 
+def _classify_auth_error(resp: httpx.Response) -> AuthErrorType:
+    """Determine the specific auth error type from a 401/403 response."""
+    body_text = ""
+    try:
+        body = resp.json()
+        body_text = body.get("message", "").lower()
+    except (ValueError, UnicodeDecodeError):
+        body_text = (resp.text or "").lower()
+
+    if resp.status_code == 401:
+        if "revoke" in body_text:
+            return AuthErrorType.token_revoked
+        return AuthErrorType.token_expired
+
+    # 403 - check for SSO/SAML first
+    if "saml" in body_text or "sso" in body_text:
+        return AuthErrorType.sso_required
+
+    return AuthErrorType.insufficient_scope
+
+
 def _raise_for_status(resp: httpx.Response) -> None:
-    """Like resp.raise_for_status() but raises GitHubAuthError for 401/403."""
-    if resp.status_code in (401, 403):
+    """Like resp.raise_for_status() but raises GitHubAuthError for 401/403.
+
+    Rate-limit 403s are excluded and raised as plain HTTPStatusError.
+    """
+    if resp.status_code == 401:
+        error_type = _classify_auth_error(resp)
         body_preview = resp.text[:300] if resp.text else "(empty)"
         raise GitHubAuthError(
             f"GitHub auth error {resp.status_code} for {resp.request.url}: {body_preview}",
             request=resp.request,
             response=resp,
+            error_type=error_type,
+        )
+    if resp.status_code == 403:
+        if _is_secondary_rate_limit(resp):
+            resp.raise_for_status()
+            return
+        error_type = _classify_auth_error(resp)
+        body_preview = resp.text[:300] if resp.text else "(empty)"
+        raise GitHubAuthError(
+            f"GitHub auth error {resp.status_code} for {resp.request.url}: {body_preview}",
+            request=resp.request,
+            response=resp,
+            error_type=error_type,
         )
     resp.raise_for_status()
 

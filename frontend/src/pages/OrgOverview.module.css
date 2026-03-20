@@ -190,6 +190,13 @@
   white-space: nowrap;
 }
 
+.syncWarning {
+  font-size: 0.75rem;
+  color: var(--ci-fail, #d73a4a);
+  margin-left: 0.25rem;
+  cursor: help;
+}
+
 /* Repo visibility badge */
 .visibilityBadge {
   font-size: 0.6rem;

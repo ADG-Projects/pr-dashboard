@@ -13,6 +13,8 @@ import { Tooltip } from './Tooltip';
 import { GitHubIcon } from './GitHubIcon';
 import { DevUserSwitcher } from './DevUserSwitcher';
 import { VersionBadge } from './VersionBadge';
+import { AuthHealthBanner } from './AuthHealthBanner';
+import { AuthHealthPanel } from './AuthHealthPanel';
 import styles from './Shell.module.css';
 
 export function Shell() {
@@ -36,6 +38,7 @@ export function Shell() {
   }, [isReposSection, lastReposSectionPath, navigate]);
   const [showTeam, setShowTeam] = useState(false);
   const [showSpaces, setShowSpaces] = useState(false);
+  const [showHealth, setShowHealth] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const { user, setUser, oauthConfigured, banner, setBanner } = useCurrentUser();
@@ -151,6 +154,12 @@ export function Shell() {
                   >
                     Team
                   </button>
+                  <button
+                    className={styles.userMenuItem}
+                    onClick={() => { setShowUserMenu(false); setShowHealth(true); }}
+                  >
+                    Account health
+                  </button>
 
                   <div className={styles.userMenuDivider} />
 
@@ -194,6 +203,7 @@ export function Shell() {
           ) : null}
         </div>
       </header>
+      {user && <AuthHealthBanner onViewDetails={() => setShowHealth(true)} />}
       {banner && (
         <div className={`${styles.banner} ${banner.type === 'error' ? styles.bannerError : ''}`}>
           <span>{banner.message}</span>
@@ -205,6 +215,7 @@ export function Shell() {
       </main>
       {showTeam && <TeamPanel onClose={() => setShowTeam(false)} />}
       {showSpaces && <SpaceManager onClose={() => setShowSpaces(false)} />}
+      {showHealth && <AuthHealthPanel onClose={() => setShowHealth(false)} />}
     </div>
   );
 }

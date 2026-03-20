@@ -273,8 +273,8 @@ async def list_pulls(
     author: str | None = Query(None),
     ci_status: str | None = Query(None),
     draft: bool | None = Query(None),
-    include_merged_days: int | None = Query(None),
-    include_closed_days: int | None = Query(None),
+    include_merged_days: int | None = Query(None, ge=0),
+    include_closed_days: int | None = Query(None, ge=0),
     session: AsyncSession = Depends(get_session),
 ) -> list[PRSummary]:
     """List PRs for a repo with optional filters.
@@ -388,6 +388,8 @@ async def get_pull(
         github_requested_reviewers=pr.github_requested_reviewers or [],
         all_reviewers=_compute_all_reviewers(pr),
         rebased_since_approval=_rebased_since_approval(pr),
+        merged_at=pr.merged_at,
+        closed_at=pr.closed_at,
         manual_priority=pr.manual_priority,
         labels=pr.labels or [],
         commenters_without_review=_commenters_without_review(pr),

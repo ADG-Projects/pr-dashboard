@@ -3,6 +3,7 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+import httpx
 from loguru import logger
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +22,12 @@ from src.models.tables import (
 )
 from src.services.crypto import decrypt_token
 from src.services.events import broadcast_event
-from src.services.github_client import GitHubAuthError, GitHubClient, parse_gh_datetime
+from src.services.github_client import (
+    AuthErrorType,
+    GitHubAuthError,
+    GitHubClient,
+    parse_gh_datetime,
+)
 from src.services.stack_detector import detect_stacks
 
 ALLOWED_LABELS: dict[str, dict[str, str]] = {
@@ -72,8 +78,8 @@ class SyncService:
 
     async def _resolve_clients_for_repo(
         self, session: AsyncSession, repo_id: int
-    ) -> list[GitHubClient]:
-        """Return all candidate GitHub clients for a repo (one per tracker with a valid token)."""
+    ) -> list[tuple[GitHubClient, int]]:
+        """Return candidate GitHub clients for a repo as (client, account_id) tuples."""
         trackers = (
             (
                 await session.execute(
@@ -86,14 +92,34 @@ class SyncService:
             .all()
         )
 
-        clients: list[GitHubClient] = []
+        clients: list[tuple[GitHubClient, int]] = []
         for tracker in trackers:
             if tracker.space and tracker.space.is_active and tracker.space.github_account:
                 account = tracker.space.github_account
                 if account.encrypted_token and account.is_active:
                     token = decrypt_token(account.encrypted_token)
                     if token:
-                        clients.append(GitHubClient(token=token, base_url=account.base_url))
+                        clients.append(
+                            (GitHubClient(token=token, base_url=account.base_url), account.id)
+                        )
+                    else:
+                        # Decrypt failed (likely SECRET_KEY rotation)
+                        account.token_status = "decrypt_failed"
+                        account.token_error = (
+                            "Token cannot be decrypted. The server encryption key may have changed."
+                        )
+                        account.token_checked_at = datetime.now(UTC)
+                        logger.warning(
+                            f"Decrypt failed for account {account.login} (id={account.id})"
+                        )
+                        await broadcast_event(
+                            "auth_issue",
+                            {
+                                "account_id": account.id,
+                                "login": account.login,
+                                "token_status": "decrypt_failed",
+                            },
+                        )
         return clients
 
     async def migrate_webhook_events(self) -> None:
@@ -120,10 +146,10 @@ class SyncService:
             logger.info(f"Checking {len(repos)} webhook(s) for event migration")
 
             for repo in repos:
-                clients = await self._resolve_clients_for_repo(session, repo.id)
-                if not clients:
+                client_tuples = await self._resolve_clients_for_repo(session, repo.id)
+                if not client_tuples:
                     continue
-                gh = clients[0]
+                gh, _account_id = client_tuples[0]
                 try:
                     hooks = await gh.list_webhooks(repo.owner, repo.name)
                     for hook in hooks:
@@ -161,18 +187,20 @@ class SyncService:
             )
 
         for repo in repos:
-            clients: list[GitHubClient] = []
+            client_tuples: list[tuple[GitHubClient, int]] = []
             try:
                 async with async_session_factory() as session:
-                    clients = await self._resolve_clients_for_repo(session, repo.id)
+                    client_tuples = await self._resolve_clients_for_repo(session, repo.id)
 
-                if not clients:
+                if not client_tuples:
                     logger.warning(f"No token available for {repo.full_name}, skipping")
                     continue
 
                 # Try each client; fall back on auth errors
                 synced = False
-                for i, gh in enumerate(clients):
+                last_auth_error: GitHubAuthError | None = None
+                last_error_account_id: int | None = None
+                for i, (gh, account_id) in enumerate(client_tuples):
                     try:
                         if repo.github_webhook_id is not None:
                             await self.sync_repo_lightweight(repo.id, repo.owner, repo.name, gh)
@@ -181,26 +209,48 @@ class SyncService:
                         synced = True
                         break
                     except GitHubAuthError as exc:
-                        remaining = len(clients) - i - 1
+                        last_auth_error = exc
+                        last_error_account_id = account_id
+                        remaining = len(client_tuples) - i - 1
                         if remaining > 0:
                             logger.warning(
-                                f"Token {i + 1}/{len(clients)} lacks access to "
+                                f"Token {i + 1}/{len(client_tuples)} lacks access to "
                                 f"{repo.full_name} ({exc.response.status_code}), "
                                 f"trying next token"
                             )
                         else:
                             logger.warning(
-                                f"All {len(clients)} token(s) failed for "
+                                f"All {len(client_tuples)} token(s) failed for "
                                 f"{repo.full_name} ({exc.response.status_code}), skipping"
                             )
+                    except httpx.HTTPStatusError as exc:
+                        if exc.response.status_code == 404:
+                            logger.warning(
+                                f"Repo {repo.full_name} returned 404, marking as not accessible"
+                            )
+                            await self._record_repo_error(
+                                repo.id,
+                                "Repository not found or access removed",
+                                account_id=None,
+                                error_type=AuthErrorType.repo_not_accessible,
+                            )
+                            break
+                        raise
 
-                if not synced:
-                    continue
+                if synced:
+                    await self._record_repo_success(repo.id)
+                elif last_auth_error is not None:
+                    await self._record_repo_error(
+                        repo.id,
+                        str(last_auth_error),
+                        account_id=last_error_account_id,
+                        error_type=last_auth_error.error_type,
+                    )
 
             except Exception:
                 logger.exception(f"Failed to sync {repo.full_name}")
             finally:
-                for gh in clients:
+                for gh, _account_id in client_tuples:
                     await gh.close()
 
     async def _check_rate_limit_budget(self, min_remaining: int) -> bool:
@@ -215,10 +265,11 @@ class SyncService:
                 .all()
             )
             for repo in repos:
-                clients = await self._resolve_clients_for_repo(session, repo.id)
-                if clients:
+                client_tuples = await self._resolve_clients_for_repo(session, repo.id)
+                if client_tuples:
+                    gh, _account_id = client_tuples[0]
                     try:
-                        data = await clients[0].get_rate_limit()
+                        data = await gh.get_rate_limit()
                         core = data.get("resources", {}).get("core", {})
                         remaining = core.get("remaining", 9999)
                         limit = core.get("limit", 5000)
@@ -234,9 +285,77 @@ class SyncService:
                         logger.debug("Could not check rate limit, proceeding with sync")
                         return True
                     finally:
-                        for c in clients:
+                        for c, _ in client_tuples:
                             await c.close()
         return True
+
+    # Map AuthErrorType to the token_status string stored on GitHubAccount
+    _ERROR_TYPE_TO_STATUS: dict[AuthErrorType, str] = {
+        AuthErrorType.token_expired: "expired",
+        AuthErrorType.token_revoked: "revoked",
+        AuthErrorType.insufficient_scope: "insufficient_scope",
+        AuthErrorType.sso_required: "sso_required",
+        AuthErrorType.decrypt_failed: "decrypt_failed",
+        AuthErrorType.repo_not_accessible: "repo_not_accessible",
+    }
+
+    # Account-level errors (should update GitHubAccount.token_status)
+    _ACCOUNT_LEVEL_ERRORS = {
+        AuthErrorType.token_expired,
+        AuthErrorType.token_revoked,
+        AuthErrorType.decrypt_failed,
+    }
+
+    async def _record_repo_error(
+        self,
+        repo_id: int,
+        error_message: str,
+        *,
+        account_id: int | None,
+        error_type: AuthErrorType,
+    ) -> None:
+        """Record an auth/sync error on TrackedRepo and optionally GitHubAccount."""
+        now = datetime.now(UTC)
+        async with async_session_factory() as session:
+            repo = await session.get(TrackedRepo, repo_id)
+            if repo:
+                repo.last_sync_error = error_message[:500]
+                repo.last_sync_error_at = now
+
+            # Update account status for account-level errors
+            if account_id and error_type in self._ACCOUNT_LEVEL_ERRORS:
+                account = await session.get(GitHubAccount, account_id)
+                if account:
+                    was_ok = account.token_status == "ok"
+                    account.token_status = self._ERROR_TYPE_TO_STATUS.get(
+                        error_type, "insufficient_scope"
+                    )
+                    account.token_error = error_message[:500]
+                    account.token_checked_at = now
+                    if was_ok:
+                        await broadcast_event(
+                            "auth_issue",
+                            {
+                                "account_id": account_id,
+                                "login": account.login,
+                                "token_status": account.token_status,
+                            },
+                        )
+            await session.commit()
+
+    async def _record_repo_success(self, repo_id: int) -> None:
+        """Clear sync errors on a repo after successful sync."""
+        now = datetime.now(UTC)
+        async with async_session_factory() as session:
+            repo = await session.get(TrackedRepo, repo_id)
+            if repo:
+                had_error = repo.last_sync_error is not None
+                repo.last_sync_error = None
+                repo.last_sync_error_at = None
+                repo.last_successful_sync_at = now
+                if had_error:
+                    logger.info(f"Cleared sync error for {repo.full_name}")
+            await session.commit()
 
     async def sync_repo(
         self,

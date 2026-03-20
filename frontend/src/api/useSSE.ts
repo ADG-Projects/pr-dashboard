@@ -75,6 +75,15 @@ export function useSSE() {
         } catch {
           // ignore parse errors
         }
+        qc.invalidateQueries({ queryKey: ['auth-health'], refetchType: 'active' });
+      });
+
+      source.addEventListener('auth_issue', () => {
+        qc.invalidateQueries({ queryKey: ['auth-health'], refetchType: 'active' });
+      });
+
+      source.addEventListener('auth_resolved', () => {
+        qc.invalidateQueries({ queryKey: ['auth-health'], refetchType: 'active' });
       });
     }
 

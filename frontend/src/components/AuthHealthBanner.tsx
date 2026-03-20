@@ -21,8 +21,11 @@ export function AuthHealthBanner({ onViewDetails }: Props) {
   if (!data?.has_issues) return null;
 
   const accountCount = data.accounts.length;
-  const repoCount = data.stale_repos.length +
-    data.accounts.reduce((sum, a) => sum + a.affected_repos.length, 0);
+  const allAffected = new Set([
+    ...data.stale_repos.map(r => r.full_name),
+    ...data.accounts.flatMap(a => a.affected_repos),
+  ]);
+  const repoCount = allAffected.size;
   const isCritical = data.accounts.some(a => CRITICAL_STATUSES.has(a.token_status));
 
   return (

@@ -591,12 +591,15 @@ async def auth_health(request: Request):
 async def auth_health_check(request: Request):
     """On-demand token validation: call GET /user on GitHub for each account."""
     from src.services.crypto import decrypt_token
-    from src.services.github_client import GitHubClient
+    from src.services.github_client import GitHubAuthError, GitHubClient
 
     user_id = get_github_user_id(request)
     if not user_id:
         return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
 
+    from datetime import UTC, datetime
+
+    # Collect account IDs first, then check each in a short-lived session
     async with async_session_factory() as session:
         accounts = (
             (
@@ -610,42 +613,84 @@ async def auth_health_check(request: Request):
             .scalars()
             .all()
         )
+        account_ids = [(a.id, a.encrypted_token, a.login, a.base_url) for a in accounts]
 
-        from datetime import UTC, datetime
+    logger.info(f"Running on-demand health check for user {user_id} ({len(account_ids)} accounts)")
 
-        now = datetime.now(UTC)
-        for acct in accounts:
-            if not acct.encrypted_token:
-                continue
-            token = decrypt_token(acct.encrypted_token)
-            if not token:
-                acct.token_status = "decrypt_failed"
-                acct.token_error = (
-                    "Token cannot be decrypted. The server encryption key may have changed."
-                )
-                acct.token_checked_at = now
-                continue
+    _status_map = {
+        "token_expired": "expired",
+        "token_revoked": "revoked",
+        "sso_required": "sso_required",
+        "insufficient_scope": "insufficient_scope",
+    }
 
-            gh = GitHubClient(token=token, base_url=acct.base_url)
-            try:
-                await gh.get_authenticated_user()
-                was_errored = acct.token_status != "ok"
-                acct.token_status = "ok"
-                acct.token_error = None
-                acct.token_checked_at = now
-                if was_errored:
-                    await broadcast_event(
-                        "auth_resolved",
-                        {"account_id": acct.id, "login": acct.login},
+    now = datetime.now(UTC)
+    for acct_id, encrypted_token, login, base_url in account_ids:
+        if not encrypted_token:
+            continue
+        token = decrypt_token(encrypted_token)
+        if not token:
+            logger.warning(f"Decrypt failed for account {login} (id={acct_id}) during health check")
+            async with async_session_factory() as session:
+                acct = await session.get(GitHubAccount, acct_id)
+                if acct:
+                    acct.token_status = "decrypt_failed"
+                    acct.token_error = (
+                        "Token cannot be decrypted. The server encryption key may have changed."
                     )
-            except Exception as exc:
-                acct.token_status = "expired"
-                acct.token_error = str(exc)[:500]
-                acct.token_checked_at = now
-            finally:
-                await gh.close()
+                    acct.token_checked_at = now
+                    await session.commit()
+            continue
 
-        await session.commit()
+        gh = GitHubClient(token=token, base_url=base_url)
+        try:
+            await gh.get_authenticated_user()
+            async with async_session_factory() as session:
+                acct = await session.get(GitHubAccount, acct_id)
+                if acct:
+                    was_errored = acct.token_status != "ok"
+                    acct.token_status = "ok"
+                    acct.token_error = None
+                    acct.token_checked_at = now
+                    await session.commit()
+                    if was_errored:
+                        logger.info(f"Account {login} (id={acct_id}) recovered from error state")
+                        await broadcast_event(
+                            "auth_resolved",
+                            {"account_id": acct_id, "login": login},
+                        )
+        except GitHubAuthError as exc:
+            status = _status_map.get(exc.error_type.value, "expired")
+            logger.warning(
+                f"Health check failed for account {login} (id={acct_id}): {exc.error_type.value}"
+            )
+            async with async_session_factory() as session:
+                acct = await session.get(GitHubAccount, acct_id)
+                if acct:
+                    acct.token_status = status
+                    acct.token_error = str(exc)[:500]
+                    acct.token_checked_at = now
+                    await session.commit()
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            logger.warning(f"Network error checking account {login} (id={acct_id}): {exc}")
+            # Transient - don't change token status
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code >= 500:
+                logger.warning(
+                    f"GitHub server error checking account {login} (id={acct_id}): {exc}"
+                )
+                # GitHub outage - don't change token status
+            else:
+                logger.warning(f"HTTP error checking account {login} (id={acct_id}): {exc}")
+                async with async_session_factory() as session:
+                    acct = await session.get(GitHubAccount, acct_id)
+                    if acct:
+                        acct.token_status = "expired"
+                        acct.token_error = str(exc)[:500]
+                        acct.token_checked_at = now
+                        await session.commit()
+        finally:
+            await gh.close()
 
     # Return updated health status
     return await auth_health(request)

@@ -1,5 +1,6 @@
 /** Slide-out panel showing auth health details and remediation actions. */
 
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type AuthHealthAccount, type AuthHealthRepo } from '../api/client';
 import styles from './AuthHealthPanel.module.css';
@@ -32,6 +33,7 @@ interface Props {
 
 export function AuthHealthPanel({ onClose }: Props) {
   const qc = useQueryClient();
+  const [checkError, setCheckError] = useState<string | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: ['auth-health'],
     queryFn: api.authHealth,
@@ -42,6 +44,9 @@ export function AuthHealthPanel({ onClose }: Props) {
     mutationFn: api.authHealthCheck,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['auth-health'] });
+    },
+    onError: (error: Error) => {
+      setCheckError(error.message);
     },
   });
 
@@ -77,9 +82,12 @@ export function AuthHealthPanel({ onClose }: Props) {
         </div>
 
         <div className={styles.footer}>
+          {checkError && (
+            <span className={styles.checkError}>{checkError}</span>
+          )}
           <button
             className={styles.checkBtn}
-            onClick={() => checkMutation.mutate()}
+            onClick={() => { setCheckError(null); checkMutation.mutate(); }}
             disabled={checkMutation.isPending}
           >
             {checkMutation.isPending ? 'Checking...' : 'Check all now'}

@@ -103,23 +103,25 @@ class SyncService:
                             (GitHubClient(token=token, base_url=account.base_url), account.id)
                         )
                     else:
-                        # Decrypt failed (likely SECRET_KEY rotation)
-                        account.token_status = "decrypt_failed"
-                        account.token_error = (
-                            "Token cannot be decrypted. The server encryption key may have changed."
-                        )
-                        account.token_checked_at = datetime.now(UTC)
-                        logger.warning(
-                            f"Decrypt failed for account {account.login} (id={account.id})"
-                        )
-                        await broadcast_event(
-                            "auth_issue",
-                            {
-                                "account_id": account.id,
-                                "login": account.login,
-                                "token_status": "decrypt_failed",
-                            },
-                        )
+                        # Decrypt failed (likely SECRET_KEY rotation) - only broadcast on transition
+                        if account.token_status != "decrypt_failed":
+                            account.token_status = "decrypt_failed"
+                            account.token_error = (
+                                "Token cannot be decrypted. "
+                                "The server encryption key may have changed."
+                            )
+                            account.token_checked_at = datetime.now(UTC)
+                            logger.warning(
+                                f"Decrypt failed for account {account.login} (id={account.id})"
+                            )
+                            await broadcast_event(
+                                "auth_issue",
+                                {
+                                    "account_id": account.id,
+                                    "login": account.login,
+                                    "token_status": "decrypt_failed",
+                                },
+                            )
         return clients
 
     async def migrate_webhook_events(self) -> None:
@@ -194,10 +196,17 @@ class SyncService:
 
                 if not client_tuples:
                     logger.warning(f"No token available for {repo.full_name}, skipping")
+                    await self._record_repo_error(
+                        repo.id,
+                        "No valid token available for this repository",
+                        account_id=None,
+                        error_type=AuthErrorType.decrypt_failed,
+                    )
                     continue
 
                 # Try each client; fall back on auth errors
                 synced = False
+                synced_account_id: int | None = None
                 last_auth_error: GitHubAuthError | None = None
                 last_error_account_id: int | None = None
                 for i, (gh, account_id) in enumerate(client_tuples):
@@ -207,6 +216,7 @@ class SyncService:
                         else:
                             await self.sync_repo(repo.id, repo.owner, repo.name, gh)
                         synced = True
+                        synced_account_id = account_id
                         break
                     except GitHubAuthError as exc:
                         last_auth_error = exc
@@ -238,7 +248,7 @@ class SyncService:
                         raise
 
                 if synced:
-                    await self._record_repo_success(repo.id)
+                    await self._record_repo_success(repo.id, account_id=synced_account_id)
                 elif last_auth_error is not None:
                     await self._record_repo_error(
                         repo.id,
@@ -323,7 +333,10 @@ class SyncService:
                 repo.last_sync_error_at = now
 
             # Update account status for account-level errors
-            if account_id and error_type in self._ACCOUNT_LEVEL_ERRORS:
+            should_broadcast = False
+            broadcast_login = ""
+            broadcast_status = ""
+            if account_id is not None and error_type in self._ACCOUNT_LEVEL_ERRORS:
                 account = await session.get(GitHubAccount, account_id)
                 if account:
                     was_ok = account.token_status == "ok"
@@ -333,18 +346,29 @@ class SyncService:
                     account.token_error = error_message[:500]
                     account.token_checked_at = now
                     if was_ok:
-                        await broadcast_event(
-                            "auth_issue",
-                            {
-                                "account_id": account_id,
-                                "login": account.login,
-                                "token_status": account.token_status,
-                            },
-                        )
+                        should_broadcast = True
+                        broadcast_login = account.login
+                        broadcast_status = account.token_status
+                else:
+                    logger.warning(
+                        f"Cannot update account status: GitHubAccount {account_id} not found"
+                    )
+            elif not repo:
+                logger.warning(f"Cannot record sync error: TrackedRepo {repo_id} not found")
             await session.commit()
 
-    async def _record_repo_success(self, repo_id: int) -> None:
-        """Clear sync errors on a repo after successful sync."""
+            if should_broadcast:
+                await broadcast_event(
+                    "auth_issue",
+                    {
+                        "account_id": account_id,
+                        "login": broadcast_login,
+                        "token_status": broadcast_status,
+                    },
+                )
+
+    async def _record_repo_success(self, repo_id: int, *, account_id: int | None = None) -> None:
+        """Clear sync errors on a repo and account after successful sync."""
         now = datetime.now(UTC)
         async with async_session_factory() as session:
             repo = await session.get(TrackedRepo, repo_id)
@@ -355,6 +379,23 @@ class SyncService:
                 repo.last_successful_sync_at = now
                 if had_error:
                     logger.info(f"Cleared sync error for {repo.full_name}")
+
+            # Reset account status if it was in error
+            if account_id is not None:
+                account = await session.get(GitHubAccount, account_id)
+                if account and account.token_status != "ok":
+                    old_status = account.token_status
+                    account.token_status = "ok"
+                    account.token_error = None
+                    account.token_checked_at = now
+                    logger.info(f"Account {account.login} recovered from {old_status}")
+                    await session.commit()
+                    await broadcast_event(
+                        "auth_resolved",
+                        {"account_id": account_id, "login": account.login},
+                    )
+                    return
+
             await session.commit()
 
     async def sync_repo(

@@ -77,7 +77,7 @@ def _classify_auth_error(resp: httpx.Response) -> AuthErrorType:
     try:
         body = resp.json()
         body_text = body.get("message", "").lower()
-    except Exception:
+    except (ValueError, UnicodeDecodeError):
         body_text = (resp.text or "").lower()
 
     if resp.status_code == 401:

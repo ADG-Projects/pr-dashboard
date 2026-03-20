@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -260,6 +260,7 @@ def _pr_to_summary(pr: PullRequest, stack_id: int | None = None) -> PRSummary:
         all_reviewers=_compute_all_reviewers(pr),
         rebased_since_approval=_rebased_since_approval(pr),
         merged_at=pr.merged_at,
+        closed_at=pr.closed_at,
         manual_priority=pr.manual_priority,
         labels=pr.labels or [],
         commenters_without_review=_commenters_without_review(pr),
@@ -273,23 +274,34 @@ async def list_pulls(
     ci_status: str | None = Query(None),
     draft: bool | None = Query(None),
     include_merged_days: int | None = Query(None),
+    include_closed_days: int | None = Query(None),
     session: AsyncSession = Depends(get_session),
 ) -> list[PRSummary]:
     """List PRs for a repo with optional filters.
 
     Includes merged PRs when include_merged_days is set.
+    Includes closed (unmerged) PRs when include_closed_days is set.
     """
     repo = await session.get(TrackedRepo, repo_id)
     if not repo:
         raise HTTPException(status_code=404, detail="Repo not found")
 
     state_condition = PullRequest.state == "open"
+    extra_conditions = []
     if include_merged_days is not None:
         cutoff = datetime.now(UTC) - timedelta(days=include_merged_days)
-        state_condition = or_(
-            PullRequest.state == "open",
-            PullRequest.merged_at >= cutoff,
+        extra_conditions.append(PullRequest.merged_at >= cutoff)
+    if include_closed_days is not None:
+        closed_cutoff = datetime.now(UTC) - timedelta(days=include_closed_days)
+        extra_conditions.append(
+            and_(
+                PullRequest.state == "closed",
+                PullRequest.merged_at.is_(None),
+                PullRequest.closed_at >= closed_cutoff,
+            )
         )
+    if extra_conditions:
+        state_condition = or_(PullRequest.state == "open", *extra_conditions)
 
     stmt = (
         select(PullRequest)

@@ -136,7 +136,10 @@ export function RepoView() {
     return () => { main.style.background = ''; };
   }, [repo, colorMap]);
 
-  const pullParams = stateFilter === 'merged' ? { include_merged_days: '7' } : undefined;
+  const pullParams: Record<string, string> | undefined =
+    stateFilter === 'merged' ? { include_merged_days: '7' }
+    : stateFilter === 'closed' ? { include_closed_days: '7' }
+    : undefined;
   const { data: pulls, isLoading } = useQuery({
     queryKey: ['pulls', repo?.id, stateFilter],
     queryFn: () => api.listPulls(repo!.id, pullParams),
@@ -221,9 +224,15 @@ export function RepoView() {
   else if (stateFilter === 'mixed') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.review_state === 'mixed');
   else if (stateFilter === 'draft') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.draft);
   else if (stateFilter === 'merged') filtered = filtered.filter((p: PRSummary) => p.merged_at != null);
+  else if (stateFilter === 'closed') filtered = filtered.filter((p: PRSummary) => p.state === 'closed' && p.merged_at == null);
   if (stateFilter === 'merged') {
     filtered = [...filtered].sort((a, b) =>
       new Date(b.merged_at!).getTime() - new Date(a.merged_at!).getTime()
+    );
+  }
+  if (stateFilter === 'closed') {
+    filtered = [...filtered].sort((a, b) =>
+      new Date(b.closed_at ?? 0).getTime() - new Date(a.closed_at ?? 0).getTime()
     );
   }
 
@@ -268,6 +277,7 @@ export function RepoView() {
     { value: 'mixed', label: 'Mixed reviews' },
     { value: 'draft', label: 'Draft' },
     { value: 'merged', label: 'Recently merged' },
+    { value: 'closed', label: 'Recently closed' },
   ];
 
   const ciOptions = [

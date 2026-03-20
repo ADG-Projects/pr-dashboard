@@ -38,6 +38,7 @@ def _pr_summary_from_model(pr: PullRequest) -> PRSummary:
         ci_status=_compute_ci_status(pr.check_runs),
         review_state=_compute_review_state(pr.reviews),
         rebased_since_approval=_rebased_since_approval(pr),
+        closed_at=pr.closed_at,
     )
 
 

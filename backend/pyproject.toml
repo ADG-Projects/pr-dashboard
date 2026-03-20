@@ -1,6 +1,6 @@
 [project]
 name = "pr-dashboard"
-version = "1.14.3"
+version = "1.14.4"
 description = "PR management dashboard for GitHub organizations"
 requires-python = ">=3.12"
 dependencies = [

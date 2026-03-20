@@ -10,6 +10,7 @@ export interface RepoFilters {
   branchFilter: string;
   priorityFilter: string;
   labelFilter: string;
+  searchQuery: string;
   stackFilter: number | null;
   collapsedStacks: Set<number>;
   flatView: boolean;
@@ -23,6 +24,7 @@ export const DEFAULT_REPO_FILTERS: RepoFilters = {
   branchFilter: '',
   priorityFilter: '',
   labelFilter: '',
+  searchQuery: '',
   stackFilter: null,
   collapsedStacks: new Set(),
   flatView: false,

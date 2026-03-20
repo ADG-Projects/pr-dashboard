@@ -185,6 +185,7 @@ class PRSummary(BaseModel):
     all_reviewers: list[dict] = []
     rebased_since_approval: bool = False
     merged_at: datetime | None = None
+    closed_at: datetime | None = None
     manual_priority: str | None = None
     labels: list[dict] = []
     commenters_without_review: list[str] = []

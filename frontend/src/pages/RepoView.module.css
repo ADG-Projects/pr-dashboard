@@ -219,6 +219,58 @@
   opacity: 0.6;
 }
 
+/* Search input */
+.searchWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 0.5rem;
+  width: 13px;
+  height: 13px;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.searchInput {
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  padding: 0.3rem 1.6rem 0.3rem 1.6rem;
+  font-family: inherit;
+  outline: none;
+  width: 180px;
+  transition: border-color var(--transition-fast);
+}
+.searchInput::placeholder {
+  color: var(--text-dim);
+}
+.searchInput:focus {
+  border-color: var(--accent-blue);
+}
+
+.searchClear {
+  position: absolute;
+  right: 0.3rem;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0.15rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm, 3px);
+}
+.searchClear:hover {
+  color: var(--text-primary);
+}
+
 .clearFilters {
   display: flex;
   align-items: center;

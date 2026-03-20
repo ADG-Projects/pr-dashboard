@@ -99,6 +99,7 @@ export interface PRSummary {
   all_reviewers: { login: string; avatar_url: string | null }[];
   rebased_since_approval: boolean;
   merged_at: string | null;
+  closed_at: string | null;
   manual_priority: string | null;
   labels: { name: string; color: string }[];
   commenters_without_review: string[];

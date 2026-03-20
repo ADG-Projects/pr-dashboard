@@ -21,7 +21,7 @@ export function RepoView() {
 
   const repoKey = `${owner}/${name}`;
   const filters = useStore((s) => s.repoFilters[repoKey] ?? DEFAULT_REPO_FILTERS);
-  const { stateFilter, authorFilter, reviewerFilter, ciFilter, branchFilter, priorityFilter, labelFilter, stackFilter, collapsedStacks, flatView } = filters;
+  const { stateFilter, authorFilter, reviewerFilter, ciFilter, branchFilter, priorityFilter, labelFilter, searchQuery, stackFilter, collapsedStacks, flatView } = filters;
 
   const setFilter = <K extends keyof typeof filters>(key: K, value: (typeof filters)[K]) =>
     setRepoFilters(repoKey, { [key]: value });
@@ -54,7 +54,7 @@ export function RepoView() {
     if (owner && name) setLastReposSectionPath(`/repos/${owner}/${name}`);
   }, [owner, name, setLastReposSectionPath]);
 
-  const hasActiveFilters = authorFilter !== '' || ciFilter !== '' || stackFilter !== null || reviewerFilter !== '' || priorityFilter !== '' || branchFilter !== '' || labelFilter !== '' || stateFilter !== 'open';
+  const hasActiveFilters = authorFilter !== '' || ciFilter !== '' || stackFilter !== null || reviewerFilter !== '' || priorityFilter !== '' || branchFilter !== '' || labelFilter !== '' || searchQuery !== '' || stateFilter !== 'open';
 
   const clearAllFilters = () => clearRepoFilters(repoKey);
 
@@ -136,7 +136,10 @@ export function RepoView() {
     return () => { main.style.background = ''; };
   }, [repo, colorMap]);
 
-  const pullParams = stateFilter === 'merged' ? { include_merged_days: '7' } : undefined;
+  const pullParams: Record<string, string> | undefined =
+    stateFilter === 'merged' ? { include_merged_days: '7' }
+    : stateFilter === 'closed' ? { include_closed_days: '7' }
+    : undefined;
   const { data: pulls, isLoading } = useQuery({
     queryKey: ['pulls', repo?.id, stateFilter],
     queryFn: () => api.listPulls(repo!.id, pullParams),
@@ -221,9 +224,15 @@ export function RepoView() {
   else if (stateFilter === 'mixed') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.review_state === 'mixed');
   else if (stateFilter === 'draft') filtered = filtered.filter((p: PRSummary) => p.state === 'open' && p.draft);
   else if (stateFilter === 'merged') filtered = filtered.filter((p: PRSummary) => p.merged_at != null);
+  else if (stateFilter === 'closed') filtered = filtered.filter((p: PRSummary) => p.state === 'closed' && p.merged_at == null);
   if (stateFilter === 'merged') {
     filtered = [...filtered].sort((a, b) =>
       new Date(b.merged_at!).getTime() - new Date(a.merged_at!).getTime()
+    );
+  }
+  if (stateFilter === 'closed') {
+    filtered = [...filtered].sort((a, b) =>
+      new Date(b.closed_at ?? 0).getTime() - new Date(a.closed_at ?? 0).getTime()
     );
   }
 
@@ -259,6 +268,23 @@ export function RepoView() {
     }
   }
 
+  // Free-text search: hard filter against multiple PR fields
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    filtered = filtered.filter((p: PRSummary) =>
+      String(p.number).includes(q) ||
+      p.title.toLowerCase().includes(q) ||
+      p.author.toLowerCase().includes(q) ||
+      (authorInfoMap.get(p.author)?.displayName?.toLowerCase().includes(q) ?? false) ||
+      p.head_ref.toLowerCase().includes(q) ||
+      p.all_reviewers?.some(r =>
+        r.login.toLowerCase().includes(q) ||
+        (authorInfoMap.get(r.login)?.displayName?.toLowerCase().includes(q) ?? false)
+      ) ||
+      p.labels?.some(l => l.name.toLowerCase().includes(q))
+    );
+  }
+
   const stateOptions = [
     { value: 'open', label: 'All open' },
     { value: 'needs_review', label: 'Needs review' },
@@ -268,6 +294,7 @@ export function RepoView() {
     { value: 'mixed', label: 'Mixed reviews' },
     { value: 'draft', label: 'Draft' },
     { value: 'merged', label: 'Recently merged' },
+    { value: 'closed', label: 'Recently closed' },
   ];
 
   const ciOptions = [
@@ -590,6 +617,30 @@ export function RepoView() {
               )}
             </div>
           </Tooltip>
+
+          {/* Search input */}
+          <div className={styles.searchWrapper}>
+            <svg className={styles.searchIcon} viewBox="0 0 16 16" fill="currentColor">
+              <path d="M11.5 7a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0zm-.82 4.74a6 6 0 1 1 1.06-1.06l3.04 3.04a.75.75 0 1 1-1.06 1.06l-3.04-3.04z" />
+            </svg>
+            <input
+              type="text"
+              className={styles.searchInput}
+              placeholder="Search PRs..."
+              value={searchQuery}
+              onChange={(e) => setFilter('searchQuery', e.target.value)}
+            />
+            {searchQuery && (
+              <button
+                className={styles.searchClear}
+                onClick={() => setFilter('searchQuery', '')}
+              >
+                <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12">
+                  <path d="M4.646 4.646a.5.5 0 01.708 0L8 7.293l2.646-2.647a.5.5 0 01.708.708L8.707 8l2.647 2.646a.5.5 0 01-.708.708L8 8.707l-2.646 2.647a.5.5 0 01-.708-.708L7.293 8 4.646 5.354a.5.5 0 010-.708z" />
+                </svg>
+              </button>
+            )}
+          </div>
 
           {/* Promoted secondary filters (show when active) */}
           {ciFilter && (

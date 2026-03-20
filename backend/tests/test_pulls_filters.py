@@ -144,6 +144,7 @@ async def setup(db_session: AsyncSession):
         html_url="https://github.com/testorg/testrepo/pull/5",
         created_at=now - timedelta(days=5),
         updated_at=now - timedelta(days=3),
+        closed_at=now - timedelta(days=3),
     )
 
     db_session.add_all([open_pr, draft_pr, merged_recent, merged_old, closed_pr])
@@ -244,6 +245,52 @@ async def test_include_merged_days_zero_returns_only_open(authed_client, setup):
     data = resp.json()
     numbers = {pr["number"] for pr in data}
     assert numbers == {1, 2}
+
+
+# ── include_closed_days ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_include_closed_days_returns_recently_closed(authed_client, setup):
+    """With include_closed_days=7, recently closed (unmerged) PRs are included."""
+    repo = setup["repo"]
+    resp = await authed_client.get(
+        f"/api/repos/{repo.id}/pulls", params={"include_closed_days": "7"}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    numbers = {pr["number"] for pr in data}
+    # Open PRs (#1, #2) + recently closed-not-merged (#5, within 7 days)
+    # NOT merged PRs (#3, #4)
+    assert numbers == {1, 2, 5}
+
+
+@pytest.mark.asyncio
+async def test_include_closed_days_zero_returns_only_open(authed_client, setup):
+    """With include_closed_days=0, no closed PRs are included (cutoff = now)."""
+    repo = setup["repo"]
+    resp = await authed_client.get(
+        f"/api/repos/{repo.id}/pulls", params={"include_closed_days": "0"}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    numbers = {pr["number"] for pr in data}
+    assert numbers == {1, 2}
+
+
+@pytest.mark.asyncio
+async def test_closed_at_field_present(authed_client, setup):
+    """PRSummary includes closed_at for closed PRs, null for open ones."""
+    repo = setup["repo"]
+    resp = await authed_client.get(
+        f"/api/repos/{repo.id}/pulls", params={"include_closed_days": "7"}
+    )
+    data = resp.json()
+    by_number = {pr["number"]: pr for pr in data}
+
+    assert by_number[1]["closed_at"] is None
+    assert by_number[2]["closed_at"] is None
+    assert by_number[5]["closed_at"] is not None
 
 
 # ── merged_at field in response ──────────────────────

@@ -738,6 +738,7 @@ class SyncService:
                         continue
                     pr.state = detail["state"]
                     pr.merged_at = parse_gh_datetime(detail.get("merged_at"))
+                    pr.closed_at = parse_gh_datetime(detail.get("closed_at"))
                     pr.updated_at = parse_gh_datetime(detail.get("updated_at")) or datetime.now(UTC)
                     pr.last_synced_at = datetime.now(UTC)
 
@@ -862,6 +863,7 @@ class SyncService:
                         continue
                     pr.state = detail["state"]
                     pr.merged_at = parse_gh_datetime(detail.get("merged_at"))
+                    pr.closed_at = parse_gh_datetime(detail.get("closed_at"))
                     pr.updated_at = parse_gh_datetime(detail.get("updated_at")) or datetime.now(UTC)
                     pr.last_synced_at = datetime.now(UTC)
 
@@ -1140,6 +1142,7 @@ class SyncService:
                 created_at=parse_gh_datetime(gh_pr["created_at"]) or now,
                 updated_at=parse_gh_datetime(gh_pr["updated_at"]) or now,
                 merged_at=parse_gh_datetime(gh_pr.get("merged_at")),
+                closed_at=parse_gh_datetime(gh_pr.get("closed_at")),
                 last_synced_at=now,
                 github_requested_reviewers=new_reviewers,
                 assignee_id=assignee_id,
@@ -1157,6 +1160,7 @@ class SyncService:
             pr.head_sha = gh_pr["head"]["sha"]
             pr.updated_at = parse_gh_datetime(gh_pr["updated_at"]) or now
             pr.merged_at = parse_gh_datetime(gh_pr.get("merged_at"))
+            pr.closed_at = parse_gh_datetime(gh_pr.get("closed_at"))
             pr.last_synced_at = now
             pr.github_requested_reviewers = new_reviewers
             pr.assignee_id = assignee_id

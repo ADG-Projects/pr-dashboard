@@ -148,7 +148,7 @@ async def _fetch_all_releases() -> list[dict]:
                         "tag_name": r.get("tag_name"),
                     }
                     for r in resp.json()
-                    if not r.get("draft")
+                    if not r.get("draft") and not r.get("prerelease")
                 ]
                 _releases_cache["data"] = releases
                 _releases_cache["timestamp"] = now
